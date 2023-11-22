@@ -1,3 +1,6 @@
 [submodule "src/tmr_ros1"]
 	path = src/tmr_ros1
 	url = https://github.com/NCS-Greenhouse/tmr_ros1.git
+[submodule "src/yolov5"]
+	path = src/yolov5
+	url = https://github.com/NCS-Greenhouse/yolov5.git
