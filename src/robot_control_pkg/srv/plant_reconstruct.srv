@@ -1,0 +1,9 @@
+std_msgs/String plant_id
+std_msgs/String marker_id_str
+std_msgs/Int16 marker_id_int
+std_msgs/String folder_path
+geometry_msgs/Point marker_offset
+
+---
+std_msgs/Float32 plant_height
+std_msgs/Bool Success 
