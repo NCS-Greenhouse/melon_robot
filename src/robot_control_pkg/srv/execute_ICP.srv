@@ -1,0 +1,18 @@
+int16 iterations
+int16 stem_climbing_iters
+float32 dist_R1
+float32 dist_R2
+sensor_msgs/PointCloud2 pc_orig
+sensor_msgs/PointCloud2 pc_new_vp
+sensor_msgs/PointCloud2 pc_stem_orig
+sensor_msgs/PointCloud2 pc_stem_new_vp
+---
+sensor_msgs/PointCloud2 pc_merged
+float32 RMSE
+int16 error_code
+float32[] R2_distances
+float32[] stem_RMSEs
+float32[] entire_RMSEs
+
+
+

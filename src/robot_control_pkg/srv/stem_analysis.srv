@@ -1,0 +1,10 @@
+sensor_msgs/PointCloud2 plant_cloud
+sensor_msgs/PointCloud2 ref_stem
+float32 adjacent_dist
+bool region_extraction
+float32 layer_start
+float32 layer_end
+---
+sensor_msgs/PointCloud2 stem_cloud
+sensor_msgs/PointCloud2[] stem_sgementation
+int16 error_code
