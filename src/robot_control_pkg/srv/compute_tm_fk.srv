@@ -1,0 +1,7 @@
+int16 VALID_JOINTSTATE = 1
+
+string fk_link_name
+sensor_msgs/JointState joint_state
+---
+geometry_msgs/PoseStamped target_pose
+int16 vadaility

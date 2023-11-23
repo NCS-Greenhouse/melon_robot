@@ -1,0 +1,14 @@
+int16 EXECUTE_SUCCESS = 0
+int16 EXECUTE_TIMEOUT = -1
+int16 EXECUTE_INACCURACY = -2
+
+sensor_msgs/JointState joint_state
+int16 target_id
+---
+geometry_msgs/PoseStamped request_pose
+geometry_msgs/PoseStamped final_pose
+float32 executing_time
+int16 error_code
+int16 found_aruco
+sensor_msgs/JointState[] executed_trajectory_js
+geometry_msgs/PoseStamped[] executed_tarjectory_pose

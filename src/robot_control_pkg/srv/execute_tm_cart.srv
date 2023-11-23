@@ -1,0 +1,12 @@
+int16 EXECUTE_SUCCESS = 0
+int16 EXECUTE_TIMEOUT = -1
+int16 EXECUTE_INACCURACY = -2
+
+geometry_msgs/PoseStamped pose
+---
+geometry_msgs/PoseStamped request_pose
+geometry_msgs/PoseStamped final_pose
+float32 executing_time
+int16 error_code
+sensor_msgs/JointState[] executed_trajectory_js
+geometry_msgs/PoseStamped[] executed_tarjectory_pose
