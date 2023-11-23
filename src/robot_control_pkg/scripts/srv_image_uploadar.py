@@ -1,11 +1,14 @@
 # -*- coding: utf-8 -*-
-"""
-Created on Fri Aug 25 21:28:21 2023
-
-@author: jun94
-@Modified By: ShengDao Du
-@Maintainer: ShengDao Du
-"""
+#
+# Created on Fri Aug 25 21:28:21 2023
+#
+# Copyright (c) 2023 NCS-Greenhouse-Group
+#
+# Author:ShengDao Du, Email: duchengdao@gmail.com
+# For more information: https://github.com/Runnlion
+# 
+# Credit: jun94
+#
 
 import numpy as np
 import pymongo, cv2
