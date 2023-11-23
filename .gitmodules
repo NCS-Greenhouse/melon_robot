@@ -4,6 +4,3 @@
 [submodule "src/yolov5"]
 	path = src/yolov5
 	url = https://github.com/NCS-Greenhouse/yolov5.git
-[submodule "src/--branch"]
-	path = src/--branch
-	url = https://github.com/NCS-Greenhouse/hrl-kdl.git
