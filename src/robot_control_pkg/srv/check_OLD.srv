@@ -1,0 +1,11 @@
+sensor_msgs/PointCloud2 input_aligned_cloud
+float32 hist_threshold
+float32 ROI_Z_min
+float32 ROI_Z_max
+---
+int16 NO_STEM_DETECTED = 1
+int16 LOW_DENSITY = 0
+sensor_msgs/PointCloud2 stem_cloud
+float32[] OLD_region
+int16[] OLD_region_type
+float32 hist_threshold
