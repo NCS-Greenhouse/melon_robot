@@ -1,0 +1,12 @@
+<launch>
+    <include file="$(find realsense2_camera)/launch/rs_aligned_depth.launch"/>
+    <include file="$(find tm5-900-moveit_config)/launch/tm5-900_moveit_planning_execution.launch"/>
+    <node pkg = "robot_control_pkg" type="tm_aruco.py" name = "tm_aruco"/>
+    <node pkg = "robot_control_pkg" type="tm_controller.py" name = "tm_controller"/>
+    <node pkg = "robot_control_pkg" type="FSM.py" name = "fsm"/>
+    <node pkg = "robot_control_pkg" type="execute_ICP_cuda.py" name = "execute_ICP_cuda"/>
+    <node pkg = "robot_control_pkg" type="srv_ICP" name = "srv_ICP_node"/>
+    <node pkg = "greenhouse_arm_pkg" type="SEA_service" name = "SEA_service_node"/>
+    <node pkg = "robot_control_pkg" type="OLDC_Service" name = "OLDC_Service_node"/>
+    <!-- <node pkg = "smach_viewer" type="smach_viewer.py" name = "smach_viewer"/> -->
+</launch>
