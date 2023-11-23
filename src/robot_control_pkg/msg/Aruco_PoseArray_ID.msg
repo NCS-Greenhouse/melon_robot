@@ -1,0 +1,3 @@
+geometry_msgs/PoseArray Aruco_PoseArray
+geometry_msgs/PoseArray Aruco_Pose_on_Base
+int16[] Aruco_ID
