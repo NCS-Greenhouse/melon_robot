@@ -56,10 +56,12 @@ class Image_Cvt:
         # self.gravity_sub = rospy.Subscriber('/realsense_gravity',PointStamped,self.gravity_callback,queue_size=1)
         
         self.global_camera_sub = rospy.Subscriber("/camera_global", Image,callback=self.global_image_callback,queue_size=1)
-        self.global_aruco_parameter = cv2.aruco.DetectorParameters_create()
+        self.global_aruco_parameter = cv2.aruco.DetectorParameters()
 
-        self.aruco_dict = cv2.aruco.Dictionary_get(cv2.aruco.DICT_5X5_250)
-        self.parameters = cv2.aruco.DetectorParameters_create()
+        # self.aruco_dict = cv2.aruco.Dictionary_get(cv2.aruco.DICT_5X5_250)
+        self.aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_5X5_250)
+        # self.parameters = cv2.aruco.DetectorParameters_create()
+        self.parameters = cv2.aruco.DetectorParameters()
         
 
 
@@ -79,9 +81,9 @@ class Image_Cvt:
         self.board_ids_C12 = np.array([[23],[24]], dtype = np.int32)
         self.board_ids_C13 = np.array([[25],[26]], dtype = np.int32)
 
-        self.board_C11 = cv2.aruco.Board_create(self.board_corners_C11, self.aruco_dict, self.board_ids_C11)
-        self.board_C12 = cv2.aruco.Board_create(self.board_corners_C12, self.aruco_dict, self.board_ids_C12)
-        self.board_C13 = cv2.aruco.Board_create(self.board_corners_C13, self.aruco_dict, self.board_ids_C13)
+        self.board_C11 = cv2.aruco.Board(self.board_corners_C11, self.aruco_dict, self.board_ids_C11)
+        self.board_C12 = cv2.aruco.Board(self.board_corners_C12, self.aruco_dict, self.board_ids_C12)
+        self.board_C13 = cv2.aruco.Board(self.board_corners_C13, self.aruco_dict, self.board_ids_C13)
         
         self.boards = []
         self.board_ids = []
@@ -100,10 +102,10 @@ class Image_Cvt:
         
         self.mtx_realsense, self.dist_realsense = self.get_camera_param(1280,720,camera="color")
         # self.mtx_realsense, self.dist_realsense = self.get_camera_param(640,480,camera="color")
-        self.aruco_dist = cv2.aruco.Dictionary_get(cv2.aruco.DICT_5X5_100)
-        self.aruco_dist_77_100 = cv2.aruco.Dictionary_get(cv2.aruco.DICT_7X7_100)
-        self.aruco_dict_global = cv2.aruco.Dictionary_get(cv2.aruco.DICT_7X7_100)
-        self.aruco_parameters = cv2.aruco.DetectorParameters_create()
+        self.aruco_dist = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_5X5_100)
+        self.aruco_dist_77_100 = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_7X7_100)
+        self.aruco_dict_global = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_7X7_100)
+        self.aruco_parameters = cv2.aruco.DetectorParameters()
 
         self.aruco_pose_arr_pub = rospy.Publisher('/aruco_pose_array_stamped', Aruco_PoseArray_ID,queue_size=5)
         self.pose_formated_publisher = rospy.Publisher('/aruco_pose_str_stamped',String,queue_size = 10) 
@@ -117,7 +119,7 @@ class Image_Cvt:
         self.pose_array_publisher = rospy.Publisher('/Aruco_Index',Int16MultiArray,queue_size=10)
         self.global_marker_pub = rospy.Publisher('/Marker_in_Global_Cam',Aruco_PoseArray_ID,queue_size=10)
         self.aruco_gravity_piblisher = rospy.Publisher('/Aruco_Triggered_Gravity',PointStamped,queue_size=10)
-        self.aruco_detection_image_publisher = rospy.Publisher('/aruco_result_img', Image, 1)
+        self.aruco_detection_image_publisher = rospy.Publisher('/aruco_result_img', Image, queue_size=1)
         # self.aruco_pointcloud_piblisher = rospy.Publisher('/Aruco_Triggered_PointCloud',PointCloud2,queue_size=10)
         self.cv_bridge = CvBridge()
         self.trans_gravity_camera = np.identity(4)
