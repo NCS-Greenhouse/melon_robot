@@ -1,4 +1,12 @@
-
+#
+# Created on Thu Nov 23 2023
+#
+# Copyright (c) 2023 NCS-Greenhouse-Group
+#
+# Author:ShengDao Du, Email: duchengdao@gmail.com
+# Github Page: https://github.com/Runnlion
+# Personal Page: https://shengdao.me
+#
 import rospy, rospkg, sys, time
 import moveit_commander
 from geometry_msgs.msg import PoseStamped, PointStamped
