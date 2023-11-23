@@ -1,0 +1,5 @@
+std_msgs/String plant_id
+float32 height
+int16 node_number
+---
+std_msgs/Bool result
