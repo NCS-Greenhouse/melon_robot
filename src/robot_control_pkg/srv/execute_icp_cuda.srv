@@ -1,0 +1,7 @@
+float32 dist_R2
+sensor_msgs/PointCloud2 pc_orig
+sensor_msgs/PointCloud2 pc_new_vp
+---
+geometry_msgs/Pose transform
+float32 RMSE
+
