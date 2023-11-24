@@ -12,8 +12,8 @@ from glob import glob
 import rospy
 import smach
 import smach_ros
-from greenhouse_arm_pkg.msg import FSM_Msg
-from greenhouse_arm_pkg.srv import update_FSM, update_FSMRequest, update_FSMResponse
+from robot_control_pkg.msg import FSM_Msg
+from robot_control_pkg.srv import update_FSM, update_FSMRequest, update_FSMResponse
 mode = 0
 # define state Start
 
@@ -297,7 +297,7 @@ class Execute_ICP(smach.State):
 
 def main():
     global rate
-    rospy.init_node('robot_sm_node')
+    rospy.init_node('fsm_node')
     rospy.Service("update_FSM_service",update_FSM,update_FSM_service)
     sm = smach.StateMachine(outcomes=['fail','finish'])
     rate = rospy.Rate(5)

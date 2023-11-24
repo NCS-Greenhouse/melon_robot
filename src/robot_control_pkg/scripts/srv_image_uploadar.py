@@ -13,7 +13,7 @@
 import numpy as np
 import pymongo, cv2
 import rospy, rospkg, configparser, base64, os
-from greenhouse_arm_pkg.srv import upload_img, upload_imgRequest, upload_imgResponse
+from robot_control_pkg.srv import upload_img, upload_imgRequest, upload_imgResponse
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
 

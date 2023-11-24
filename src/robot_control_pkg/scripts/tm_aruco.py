@@ -14,7 +14,7 @@ from sensor_msgs.msg import Image, PointCloud2
 from geometry_msgs.msg import PoseArray, Pose
 from std_msgs.msg import Bool,Int16MultiArray, String
 from geometry_msgs.msg import PointStamped, PoseArray, PoseStamped
-from greenhouse_arm_pkg.msg import Aruco_PoseArray_ID
+from robot_control_pkg.msg import Aruco_PoseArray_ID
 from cv_bridge import CvBridge,CvBridgeError
 import rospy, rospkg
 import numpy as np
@@ -273,11 +273,6 @@ class Image_Cvt:
                 pose_base.position.y = T_base_Marker[1,3]
                 pose_base.position.z = T_base_Marker[2,3]
                 pose_array_base.poses.append(pose_base)
-
-
-
-
-            
                 if(self.draw_axis == True):
                     cv2.drawFrameAxes(gray, self.mtx_realsense, self.dist_realsense, rvec, tvec, 0.08)
                     cv2.aruco.drawDetectedMarkers(gray, corners)

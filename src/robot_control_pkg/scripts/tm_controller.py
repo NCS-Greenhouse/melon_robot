@@ -106,8 +106,11 @@ class TM_Controller(object):
         self.gpfkr.robot_state = self.RS
         self.gpfkr.robot_state.joint_state.name = self.name
 
-        
+    
     def execute_tm_js_and_wait_aruco_service(self, request):
+        """
+        
+        """
         eTMJS_Res = execute_tm_js_and_wait_arucoResponse()
         eTMJS_Res.request_pose.header.stamp = rospy.Time.now()
 

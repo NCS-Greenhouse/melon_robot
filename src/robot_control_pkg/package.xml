@@ -60,6 +60,14 @@
   <exec_depend>roscpp</exec_depend>
   <exec_depend>rospy</exec_depend>
 
+  <build_depend>pcl_conversions</build_depend>
+  <exec_depend>pcl_conversions</exec_depend>
+  <build_export_depend>pcl_conversions</build_export_depend>
+
+  <build_depend>pcl_ros</build_depend>
+  <build_export_depend>pcl_ros</build_export_depend>
+  <exec_depend>pcl_ros</exec_depend>
+
   <depend>message_runtime</depend>
   <depend>std_msgs</depend>
   <depend>sensor_msgs</depend>
