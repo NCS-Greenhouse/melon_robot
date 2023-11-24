@@ -34,7 +34,8 @@ class App:
                         "/srv_ICP_node",
                         "/tm_aruco",
                         "/tm_controller", 
-                        "/tm_driver"]
+                        "/tm_driver",
+                        "/yolo_predictor"]
         self.node_status = self.nodes.copy()
         for node in self.nodes:
             self.tree.insert("", "end", values=(node, "", ""))
