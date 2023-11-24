@@ -8,10 +8,21 @@ project(robot_control_pkg)
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED
-message_generation
-roscpp
-rospy
-moveit_msgs
+  message_generation
+  moveit_core
+  moveit_msgs
+  moveit_planners_ompl
+  moveit_visual_tools
+  moveit_ros_move_group
+  moveit_ros_planning_interface
+  moveit_ros_visualization
+  pcl_conversions
+  pcl_ros
+  roscpp
+  rospy
+  tm_msgs
+  visualization_msgs
+  visualization_msgs
 )
 
 ## System dependencies are found with CMake's conventions
@@ -51,6 +62,10 @@ moveit_msgs
 add_message_files(
   FILES
   Aruco_PoseArray_ID.msg
+  FSM_Msg.msg
+  Job_Status.msg
+  OLD_Msg.msg
+  plant_height_stamped.msg
 #   Message1.msg
 #   Message2.msg
 )
@@ -64,6 +79,14 @@ add_service_files(
   execute_tm_cart.srv
   execute_tm_js_and_wait_aruco.srv
   execute_tm_js.srv
+  execute_icp_cuda.srv
+  plant_reconstruct.srv
+  update_FSM.srv
+  plant_phonotype_info.srv
+  execute_ICP.srv
+  stem_analysis.srv
+  check_OLD.srv
+  melon_det.srv
 )
 
 ## Generate actions in the 'action' folder
@@ -123,7 +146,7 @@ CATKIN_DEPENDS message_runtime roscpp rospy std_msgs sensor_msgs geometry_msgs
 ## Your package locations should be listed before other locations
 include_directories(
 # include
-# ${catkin_INCLUDE_DIRS}
+${catkin_INCLUDE_DIRS}
 )
 
 ## Declare a C++ library
@@ -140,7 +163,11 @@ include_directories(
 ## With catkin_make all packages are built within a single CMake context
 ## The recommended prefix ensures that target names across packages don't collide
 # add_executable(${PROJECT_NAME}_node src/robot_control_pkg_node.cpp)
-
+add_executable(srv_ICP src/srv_ICP.cpp)
+add_executable(OLDC_Service src/OLDC_Service.cpp)
+add_executable(SEA_service src/SEA_service.cpp)
+add_executable(plant_reconstruct_srv src/plant_reconstruct_srv.cpp)
+add_executable(cloud2image_node src/cloud2image_node.cpp)
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
 ## target back to the shorter version for ease of user use
@@ -155,6 +182,12 @@ include_directories(
 # target_link_libraries(${PROJECT_NAME}_node
 #   ${catkin_LIBRARIES}
 # )
+target_link_libraries(srv_ICP ${catkin_LIBRARIES} pcl_visualization)
+target_link_libraries(OLDC_Service ${catkin_LIBRARIES} pcl_visualization)
+target_link_libraries(SEA_service ${catkin_LIBRARIES} pcl_visualization)
+target_link_libraries(plant_reconstruct_srv ${catkin_LIBRARIES} pcl_visualization)
+target_link_libraries(cloud2image_node ${catkin_LIBRARIES})
+
 
 #############
 ## Install ##
@@ -166,8 +199,15 @@ include_directories(
 ## Mark executable scripts (Python etc.) for installation
 ## in contrast to setup.py, you can choose the destination
 catkin_install_python(PROGRAMS
+  scripts/execute_ICP_cuda.py
+  scripts/FSM.py
+  scripts/marker_system.py
+  scripts/robot_info_sender.py
   scripts/srv_image_uploadar.py
+  scripts/tm_aruco.py
   scripts/tm_controller.py
+  scripts/node_viewer.py
+  scripts/predict_ros_service.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
