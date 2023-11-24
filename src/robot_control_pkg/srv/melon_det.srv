@@ -1,0 +1,5 @@
+sensor_msgs/Image Image
+---
+std_msgs/Float64MultiArray[] Image_Masks
+std_msgs/Int16[] Classes
+std_msgs/Float64[] Confidences
