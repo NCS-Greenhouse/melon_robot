@@ -122,7 +122,47 @@ class datahub_api_send_get():
             except ValueError:  # includes simplejson.decoder.JSONDecodeError
                 return None
                 print('Decoding JSON has failed')
-    
+    def read_last_data_with_ts(self, index):
+        """
+        從dataHUB上讀取前次上傳的最後一筆資料
+        Args:
+            index (str): dataHUB 登錄用戶名
+        Returns:
+            datahub上指定的內容
+        """
+        
+        self.new_tagname()
+        # index=-1 表示所用的資料類型不是array
+        if index == -1:
+            search_json = {
+                "nodeId": self.node_id,
+                "deviceId": self.device_id,
+                "tagName": self.tag_name
+            }
+        else:
+            search_json = {
+                "nodeId": self.node_id,
+                "deviceId": self.device_id,
+                "tagName": self.tag_name,
+                "index": int(index)
+            }
+        search_json = json.dumps(search_json)
+        url_post = 'https://portal-datahub-greenhouse-eks005.education.wise-paas.com/api/v1/RealData/raw'
+        resp = self.session.post(url_post, headers=self.headers, data=search_json)
+        if(resp.content.decode('utf8')[21:24] == "502"):
+            rospy.logerr("502 Bad Gateway.")
+            rospy.logdebug("Waiting For 2 seconds.")
+            rospy.Rate(0.5).sleep()
+            return None
+        else:
+            try:
+                data = json.loads(resp.content.decode('utf8'))[0]['value']
+                ts = json.loads(resp.content.decode('utf8'))[0]['ts']
+                ts = ts.replace('Z','').replace('T',' ')
+                return [data,ts]
+            except ValueError:  # includes simplejson.decoder.JSONDecodeError
+                return None
+                print('Decoding JSON has failed')
     def close_connection(self):
         self.session.close()
         rospy.loginfo("[GET] Session for Tag: \"" + self.tag_name+ "\" is disconnected.")
@@ -257,9 +297,6 @@ class Marker_server():
         self.next_scheduled_time = int(time.time())
         self.current_marker_dict = {}
         
-        
-        
-    
     def init_folder(self):
         if not os.path.exists(self.root_path):
             # Create Database
