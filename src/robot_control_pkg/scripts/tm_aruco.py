@@ -32,17 +32,19 @@ from queue import Queue
 
 class Image_Cvt:
     def __init__(self):
-        self.urdf_path = "/home/robot/catkin_pcl_rt/src/mycobot_ros/mycobot_description/urdf/mycobot/mycobot_LGR.urdf"
-        self.robot_urdf = URDF.from_xml_file(self.urdf_path)
-        self.kdl_kin = KDLKinematics(self.robot_urdf, "world", "global_camera")
-        self.cam_wrt_world = self.kdl_kin.forward([])
-        self.world_wrt_cam = np.linalg.inv(self.kdl_kin.forward([]))
+        # self.TM_DESCRIPTION_PKG_PATH = rospkg.RosPack().get_path('tm_description')
+        # self.urdf_path = self.TM_DESCRIPTION_PKG_PATH + "/urdf/tm5-900.urdf"
+        # self.urdf_path = "/home/robot/catkin_pcl_rt/src/mycobot_ros/mycobot_description/urdf/mycobot/mycobot_LGR.urdf"
+        # self.robot_urdf = URDF.from_xml_file(self.urdf_path)
+        # self.kdl_kin = KDLKinematics(self.robot_urdf, "world", "global_camera")
+        # self.cam_wrt_world = self.kdl_kin.forward([])
+        # self.world_wrt_cam = np.linalg.inv(self.kdl_kin.forward([]))
         self.simulation = False
         self.camera_type = "color" #color
         self.aruco_type = "planner" #or planner
         # self.aruco_type = "cube" #or planner
         self.draw_axis = True
-        self.init_node = rospy.init_node('Aruco_Detector', anonymous=True)
+        self.init_node = rospy.init_node('Aruco_Detector')
         self.image_queue_color = Queue(maxsize=100)
         # rospy.Subscriber('/camera/depth/color/points', PointCloud2, self.pointcloud_callback, queue_size=1)
         # rospy.Subscriber('/camera/depth_registered/points', PointCloud2, self.pointcloud_callback, queue_size=1)
@@ -133,6 +135,7 @@ class Image_Cvt:
         self.T_flange_camera[0,3] = 0.02424017
         self.T_flange_camera[1,3] = 0.12422165
         self.T_flange_camera[2,3] = 0.05114026
+        rospy.loginfo("ArUco Detector Set.")
 
     def get_camera_param(self,w,h,camera = "color"):
         if self.simulation:
@@ -225,7 +228,7 @@ class Image_Cvt:
         
 
         if ids is not None:
-            self.tool_pose = rospy.wait_for_message("tool_pose", PoseStamped)
+            self.tool_pose = rospy.wait_for_message("tool_pose", PoseStamped) #Get TM Robot TCP Pose
             T_base_ee = tf.transformations.quaternion_matrix(np.array([self.tool_pose.pose.orientation.x,
                 self.tool_pose.pose.orientation.y,
                 self.tool_pose.pose.orientation.z,
@@ -286,8 +289,9 @@ class Image_Cvt:
         # self.aruco_detection_image_publisher.publish(img)
         cv2.imshow("frame",gray)
         cv2.waitKey(1)
-
+        
     def global_image_callback(self,data):
+        # @aborted 
         img_cv = self.cv_bridge.imgmsg_to_cv2(data)
         gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY)
         corners, ids, rejectedImgPoints = cv2.aruco.detectMarkers(gray,self.aruco_dict_global,parameters=self.aruco_parameters) #get marker
