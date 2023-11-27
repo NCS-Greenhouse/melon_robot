@@ -35,6 +35,7 @@ class TM_Controller(object):
         super(TM_Controller, self).__init__()
         moveit_commander.roscpp_initialize(sys.argv)
         rospy.init_node("tm_controller_node", anonymous=True, log_level=rospy.DEBUG)
+        self.TM_DESCRIPTION_PKG_PATH = rospkg.RosPack().get_path('tm_description')
 
         display_trajectory_publisher = rospy.Publisher(
             "/move_group/display_planned_path",
@@ -72,7 +73,7 @@ class TM_Controller(object):
         self.exe_tm_js_wait_ArUco_Srv = rospy.Service('exe_tm_js_wait_aruco', execute_tm_js_and_wait_aruco, self.execute_tm_js_and_wait_aruco_service)
         self.name = ['shoulder_1_joint' ,'shoulder_2_joint', 'elbow_joint', 'wrist_1_joint', 'wrist_2_joint', 'wrist_3_joint']
 
-        self.urdf_path = "/home/robot/TM_worksapce/src/tmr_ros1/tm_description/urdf/tm5-900.urdf"
+        self.urdf_path = self.TM_DESCRIPTION_PKG_PATH + "/urdf/tm5-900.urdf"
         self.robot_urdf = URDF.from_xml_file(self.urdf_path)
         self.kdl_kin = KDLKinematics(self.robot_urdf, "link_0", "tool0")
         
