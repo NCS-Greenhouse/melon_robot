@@ -361,8 +361,8 @@ def main():
     sis.start()
     sm.execute()
     
-    
-    rospy.spin()
+    while(not rospy.is_shutdown()):
+        rospy.Rate(20).sleep()
 
     sis.stop()
 
