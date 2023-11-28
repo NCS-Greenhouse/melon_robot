@@ -7,18 +7,18 @@
 # Github Page: https://github.com/Runnlion
 # Personal Page: https://shengdao.me
 #
-import rospy, rospkg, sys, time
+import rospy, rospkg, sys, time, copy
 import moveit_commander
-from geometry_msgs.msg import PoseStamped, PointStamped
+from geometry_msgs.msg import PoseStamped, PointStamped, Pose
 from sensor_msgs.msg import JointState
 from moveit_msgs.msg import DisplayTrajectory, RobotState
 from robot_control_pkg.srv import execute_tm_jsRequest, execute_tm_jsResponse, execute_tm_js
-from robot_control_pkg.srv import execute_tm_cart,  execute_tm_cartRequest, execute_tm_cartResponse
+from robot_control_pkg.srv import execute_tm_pose,  execute_tm_poseRequest, execute_tm_poseResponse
 from robot_control_pkg.srv import compute_tm_fkRequest, compute_tm_fkResponse, compute_tm_fk
 from robot_control_pkg.srv import compute_tm_ikRequest, compute_tm_ikResponse, compute_tm_ik
 from robot_control_pkg.srv import execute_tm_js_and_wait_aruco, execute_tm_js_and_wait_arucoResponse
 from robot_control_pkg.msg import Aruco_PoseArray_ID
-from moveit_msgs.srv import GetPositionIK, GetPositionIKRequest
+from moveit_msgs.srv import GetPositionIK, GetPositionIKRequest, GetPositionIKResponse
 from moveit_msgs.srv import GetPositionFK, GetPositionFKRequest, GetPositionFKResponse
 from moveit_msgs.msg import PositionIKRequest, Constraints, PositionConstraint, BoundingVolume
 from shape_msgs.msg import SolidPrimitive
@@ -29,8 +29,20 @@ from urdf_parser_py.urdf import URDF
 from pykdl_utils.kdl_kinematics import KDLKinematics
 from tf.transformations import quaternion_from_matrix
 
+
 class TM_Controller(object):
 
+
+    """
+    TM_Controller is an integration service provider.
+
+    Service Lists:
+    execute_tm_js
+    compute_tm_ik
+    compute_tm_fk
+    execute_tm_pose
+
+    """
     def __init__(self):
         super(TM_Controller, self).__init__()
         moveit_commander.roscpp_initialize(sys.argv)
@@ -57,7 +69,10 @@ class TM_Controller(object):
         self.move_group = moveit_commander.MoveGroupCommander(self.group_name)
 
         self.planning_frame = self.move_group.get_planning_frame() #world
+        # self.move_group.get_planning_frame()
         rospy.logdebug("Planning frame: %s" % self.planning_frame)
+
+
 
         self.eef_link = self.move_group.get_end_effector_link() #tool0
         rospy.logdebug("End effector link: %s" % self.eef_link)
@@ -68,14 +83,14 @@ class TM_Controller(object):
         self.exe_tmjsSrv = rospy.Service('execute_tm_js', execute_tm_js, self.execute_tm_js_service)
         self.exe_tmfkSrv = rospy.Service('compute_tm_fk', compute_tm_fk, self.compute_tm_fk_service)
         self.exe_tmikSrv = rospy.Service('compute_tm_ik', compute_tm_ik, self.compute_tm_ik_service)
-        self.exe_tmjsCartSrv = rospy.Service('execute_tm_cart', execute_tm_cart, self.execute_cartesian_service)
+        self.exe_tmjsCartSrv = rospy.Service('execute_tm_pose', execute_tm_pose, self.execute_tm_pose_service)
 
         self.exe_tm_js_wait_ArUco_Srv = rospy.Service('exe_tm_js_wait_aruco', execute_tm_js_and_wait_aruco, self.execute_tm_js_and_wait_aruco_service)
         self.name = ['shoulder_1_joint' ,'shoulder_2_joint', 'elbow_joint', 'wrist_1_joint', 'wrist_2_joint', 'wrist_3_joint']
 
         self.urdf_path = self.TM_DESCRIPTION_PKG_PATH + "/urdf/tm5-900.urdf"
         self.robot_urdf = URDF.from_xml_file(self.urdf_path)
-        self.kdl_kin = KDLKinematics(self.robot_urdf, "link_0", "tool0")
+        self.kdl_kin = KDLKinematics(self.robot_urdf, "base", "tool0")
         
         
         self.js = JointState()
@@ -185,12 +200,12 @@ class TM_Controller(object):
         return eTMJS_Res
 
 
-    def get_pose(self):
+    def get_pose(self)->PoseStamped:
         # wpose = self.move_group.get_current_pose().pose
         # print(wpose)
         return self.move_group.get_current_pose()
     
-    def get_jointstates(self):
+    def get_jointstates(self)->JointState:
         js_position = self.move_group.get_current_joint_values()
         js = JointState()
         js.name = self.name
@@ -207,7 +222,7 @@ class TM_Controller(object):
     #     current_joints = move_group.get_current_joint_values()
     #     return all_close(joint_goal, current_joints, 0.01)
 
-    def execute_tm_js_service(self,request:execute_tm_jsRequest):
+    def execute_tm_js_service(self,request:execute_tm_jsRequest)->execute_tm_jsResponse:
 
         self.move_group.set_max_velocity_scaling_factor(1)
 
@@ -232,22 +247,20 @@ class TM_Controller(object):
 
         while(not finished):
             finished = True
-            curr_js = self.move_group.get_current_joint_values()
+            # curr_js = self.move_group.get_current_joint_values()
+            curr_js:JointState = rospy.wait_for_message('joint_states',JointState,0.1)
             for i in range(6):
-                if(abs(curr_js[i] - position[i])>angle_tolorance):
+                if(abs(curr_js.position[i] - position[i])>angle_tolorance):
                     finished = False
                     break
-            js_pos_list.append(curr_js)
+            js_list.append(curr_js)
             ros_time_list.append(rospy.Time.now())
             rate.sleep()
         
         t_end = time.time()
-        for i in range(len(js_pos_list)):
-            js = JointState()
-            js.header.seq = i
-            js.header.stamp = ros_time_list[i]
-            js.position = js_pos_list[i]
-            js_list.append(js)
+        for i in range(len(js_list)):
+            # js = JointState()
+            js_list[i].header.seq = i
         #consider move js appedn outside, only save data in loop
 
         self.move_group.stop()
@@ -257,7 +270,7 @@ class TM_Controller(object):
         eTMJS_Res.final_pose = self.get_pose()
         desired_mtx = self.kdl_kin.forward(position)
         quater = quaternion_from_matrix(desired_mtx)
-        eTMJS_Res.request_pose.header.frame_id = "tool0"
+        eTMJS_Res.request_pose.header.frame_id = "camera_link"
         eTMJS_Res.request_pose.pose.position.x = desired_mtx[0,3]
         eTMJS_Res.request_pose.pose.position.y = desired_mtx[1,3]
         eTMJS_Res.request_pose.pose.position.z = desired_mtx[2,3]
@@ -267,23 +280,82 @@ class TM_Controller(object):
         eTMJS_Res.request_pose.pose.orientation.w = quater[3]
 
         return eTMJS_Res
+    def set_pose_goal(self, x, y, z, rx, ry, rz, rw)-> Pose():
+        pose_goal = Pose()
+        pose_goal.orientation.w = rw
+        pose_goal.orientation.x = rx
+        pose_goal.orientation.y = ry
+        pose_goal.orientation.z = rz
+        pose_goal.position.x = x
+        pose_goal.position.y = y
+        pose_goal.position.z = z
+        return pose_goal
+    
+    def execute_tm_pose_service(self,request:execute_tm_poseRequest):
+        '''
+        # Descripton
+        This function is a service callback which move the robot arm to requested position.
+        The request and response messages show below:
 
-    def execute_cartesian_service(self,request:execute_tm_cartRequest):
-        waypoints = []
-        waypoints.append(self.get_pose().pose)
-        waypoints.append(request.pose.pose)
-        (plan, fraction) = self.move_group.compute_cartesian_path(waypoints, 0.01, 0.0, avoid_collisions=True)
+        ### Request
+        * int16 EXECUTE_SUCCESS = 0
+        * int16 EXECUTE_TIMEOUT = -1
+        * int16 EXECUTE_INACCURACY = -2
+        ### Response
+        * geometry_msgs/PoseStamped pose
+        * geometry_msgs/PoseStamped request_pose
+        * geometry_msgs/PoseStamped final_pose
+        * float32 executing_time
+        * int16 error_code
+        * sensor_msgs/JointState[] executed_trajectory_js
+        * geometry_msgs/PoseStamped[] executed_tarjectory_pose
+        '''
+        delta = 1e-3
+        self.move_group.set_pose_target(request.pose.pose)
 
-        self.move_group.execute(plan, wait=True)
+        t_start = time.time()
+        success = self.move_group.go(wait = False)
+        fihished = False
+        pose_list = []
+        joint_state_list = []
+        while(not fihished):
+            current_pose:PoseStamped = self.move_group.get_current_pose()
+            current_joint_state:JointState = rospy.wait_for_message('/joint_states',JointState)
+            pose_list.append(current_pose)
+            joint_state_list.append(current_joint_state)
+            _delta =[
+                abs(request.pose.pose.position.x - current_pose.pose.position.x),
+                abs(request.pose.pose.position.y - current_pose.pose.position.y),
+                abs(request.pose.pose.position.z - current_pose.pose.position.z),
+                abs(request.pose.pose.orientation.w - current_pose.pose.orientation.w),
+                abs(request.pose.pose.orientation.x - current_pose.pose.orientation.x),
+                abs(request.pose.pose.orientation.y - current_pose.pose.orientation.y),
+                abs(request.pose.pose.orientation.z - current_pose.pose.orientation.z)
+            ]
+            if(any(d > delta for d in _delta)):
+                fihished = False
+                continue
+            else:
+                fihished = True
+        self.move_group.stop()
+        self.move_group.clear_pose_targets()
+        t_end = time.time()
+        response = execute_tm_poseResponse()
+        # response.executed_tarjectory_pose = pose_list
+        assert len(joint_state_list) == len(pose_list)
+        for i in range(len(joint_state_list)):
+            joint_state_list[i].header.seq = i
+            pose_list[i].header =  joint_state_list[i].header
+        response.executed_trajectory_js = joint_state_list
+        response.executing_time = t_end - t_start
+        response.final_pose = self.move_group.get_current_pose()
+        response.request_pose = request.pose
+        response.error_code = success
 
-        rospy.loginfo("Planned Cart:\t" + str(plan))
-        
-        response = execute_tm_cartResponse()
-        
         return response
 
 
-    def compute_tm_fk_service(self, request):
+    def compute_tm_fk_service(self, request:compute_tm_fkRequest) ->compute_tm_fkResponse:
         #Not finished
 
         position = request.joint_state.position
@@ -291,45 +363,24 @@ class TM_Controller(object):
         # self.gpfkr.fk_link_names= [self.move_group.get_end_effector_link()]
         self.gpfkr.fk_link_names= [request.fk_link_name]
         
-        self.gpfkr.robot_state= self.robot.get_current_state()
+        self.gpfkr.robot_state:RobotState = self.robot.get_current_state()
         self.gpfkr.robot_state.joint_state.position= list(self.gpfkr.robot_state.joint_state.position)
-        result = self.pfk_srv.call(self.gpfkr)
+        result:GetPositionFKResponse = self.pfk_srv.call(self.gpfkr)
         ctmfkRes = compute_tm_fkResponse()
         ctmfkRes.target_pose = result.pose_stamped[0]
         ctmfkRes.vadaility = result.error_code.val
         return ctmfkRes
 
         
-    def compute_tm_ik_service(self, request):
+    def compute_tm_ik_service(self, request:compute_tm_ikRequest)->compute_tm_ikResponse:
         pose_stamped:PoseStamped = request.target_pose
         pose_stamped.header.stamp = rospy.Time.now()
         self.gpikr.ik_request.pose_stamped = pose_stamped
         self.gpikr.ik_request.ik_link_name = "realsense_fixture"
-        # self.gpikr.ik_request.ik_link_name = "realsense_fixture"
-
-        # self.gpikr.ik_request.ik_link_names
-        # tolerance = 0.01  # e.g., 5cm tolerance
-        # constraint = PositionConstraint()
-        # constraint.header.frame_id = "world"  # adjust this to your robot's base frame
-        # constraint.link_name = "realsense_fixture"  # adjust this to your robot's end effector link
-
-        # volume = BoundingVolume()
-        # primitive = SolidPrimitive()
-        # primitive.type = SolidPrimitive.BOX
-        # primitive.dimensions = [tolerance]
-        # volume.primitives.append(primitive)
-        # volume.primitive_poses.append(pose_stamped.pose)  # replace with your desired position
-        # constraint.constraint_region = volume
-        # constraint.weight = 1.0
-
-        # self.gpikr.ik_request.constraints.position_constraints.append(constraint)
-
-        result = self.pik_srv.call(self.gpikr)
+        result:GetPositionIKResponse = self.pik_srv.call(self.gpikr)
         ctmikRes = compute_tm_ikResponse()
         ctmikRes.joint_state = result.solution.joint_state
         ctmikRes.error_code = result.error_code.val
-        
-        # print(request,ctmikRes)
         return ctmikRes
 
 tm_controller = TM_Controller()
