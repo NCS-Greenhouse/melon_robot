@@ -62,17 +62,15 @@ class TM_Controller(object):
             except:
                 rospy.logwarn("Waiting For parameter: robot_description")
                 rospy.Rate(1).sleep()
-        self.robot = moveit_commander.RobotCommander()
-        self.scene = moveit_commander.PlanningSceneInterface()
+        self.robot = moveit_commander.robot.RobotCommander()
+        self.scene = moveit_commander.planning_scene_interface.PlanningSceneInterface()
 
         self.group_name = "tmr_arm"
-        self.move_group = moveit_commander.MoveGroupCommander(self.group_name)
-
+        self.move_group = moveit_commander.move_group.MoveGroupCommander(self.group_name)
+        
         self.planning_frame = self.move_group.get_planning_frame() #world
         # self.move_group.get_planning_frame()
         rospy.logdebug("Planning frame: %s" % self.planning_frame)
-
-
 
         self.eef_link = self.move_group.get_end_effector_link() #tool0
         rospy.logdebug("End effector link: %s" % self.eef_link)
@@ -125,7 +123,7 @@ class TM_Controller(object):
     
     def execute_tm_js_and_wait_aruco_service(self, request):
         """
-        
+        This function is specifically desgined for aruco finding and moving.
         """
         eTMJS_Res = execute_tm_js_and_wait_arucoResponse()
         eTMJS_Res.request_pose.header.stamp = rospy.Time.now()
@@ -201,11 +199,24 @@ class TM_Controller(object):
 
 
     def get_pose(self)->PoseStamped:
+        '''
+        Equals to self.move_group.get_current_pose()
+
+        return PoseStamped
+        '''
         # wpose = self.move_group.get_current_pose().pose
         # print(wpose)
         return self.move_group.get_current_pose()
     
     def get_jointstates(self)->JointState:
+        '''
+        A wrapper for function "self.move_group.get_current_joint_values()"
+        The name, header, and position are integrated.
+
+        ## Alternative
+        js = rospy.wait_for_message('/joint_states',JointState)
+        '''
+
         js_position = self.move_group.get_current_joint_values()
         js = JointState()
         js.name = self.name
@@ -213,17 +224,20 @@ class TM_Controller(object):
         js.position = js_position
         return js
 
-    # def go_to_joint_state(self, js):
-
-
-    #     self.move_group.go(js.position, wait=False)
-    #     move_group.stop()
-
-    #     current_joints = move_group.get_current_joint_values()
-    #     return all_close(joint_goal, current_joints, 0.01)
-
     def execute_tm_js_service(self,request:execute_tm_jsRequest)->execute_tm_jsResponse:
+        '''
+        This function is a callback function which move the robot to a requested joint state.
 
+        ### Request
+        * sensor_msgs/JointState joint_state
+        ### Response
+        * geometry_msgs/PoseStamped request_pose
+        * geometry_msgs/PoseStamped final_pose
+        * float32 executing_time
+        * int16 error_code
+        * sensor_msgs/JointState[] executed_trajectory_js
+        * geometry_msgs/PoseStamped[] executed_tarjectory_pose
+        '''
         self.move_group.set_max_velocity_scaling_factor(1)
 
         eTMJS_Res = execute_tm_jsResponse()
@@ -281,6 +295,9 @@ class TM_Controller(object):
 
         return eTMJS_Res
     def set_pose_goal(self, x, y, z, rx, ry, rz, rw)-> Pose():
+        '''
+        Warp the x, y, z, quaternion to a Pose object
+        '''
         pose_goal = Pose()
         pose_goal.orientation.w = rw
         pose_goal.orientation.x = rx
@@ -357,7 +374,9 @@ class TM_Controller(object):
 
     def compute_tm_fk_service(self, request:compute_tm_fkRequest) ->compute_tm_fkResponse:
         #Not finished
-
+        '''
+        A callback function which compute the forward kinematics solutions.
+        '''
         position = request.joint_state.position
         self.gpfkr.header.frame_id= self.move_group.get_planning_frame()
         # self.gpfkr.fk_link_names= [self.move_group.get_end_effector_link()]
@@ -373,6 +392,9 @@ class TM_Controller(object):
 
         
     def compute_tm_ik_service(self, request:compute_tm_ikRequest)->compute_tm_ikResponse:
+        '''
+        A callback function which compute the possible inverse kinematics solutions.
+        '''
         pose_stamped:PoseStamped = request.target_pose
         pose_stamped.header.stamp = rospy.Time.now()
         self.gpikr.ik_request.pose_stamped = pose_stamped
