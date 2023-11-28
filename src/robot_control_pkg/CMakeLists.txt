@@ -76,7 +76,7 @@ add_service_files(
   upload_img.srv
   compute_tm_fk.srv
   compute_tm_ik.srv
-  execute_tm_cart.srv
+  execute_tm_pose.srv
   execute_tm_js_and_wait_aruco.srv
   execute_tm_js.srv
   execute_icp_cuda.srv
