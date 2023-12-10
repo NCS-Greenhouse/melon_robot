@@ -1,229 +1,429 @@
+#
+# Created on Sun Dec 10 2023
+#
+# Copyright (c) 2023 NCS-Greenhouse-Group
+#
+# Author:ShengDao Du, Email: duchengdao@gmail.com
+# Github Page: https://github.com/Runnlion
+# Personal Page: https://shengdao.me
+#
+
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
+import rospy
+import sensor_msgs.point_cloud2 as pc2
+from sensor_msgs.msg import PointCloud2
+from robot_control_pkg.msg import nn_objects
+from tqdm import tqdm
+from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_score
 
-def initialize_particles(num_particles, region_limits):
-    """
-    Initialize particles in 3D space.
+class ParticleFilter_Single_Object:
 
-    Parameters:
-    - num_particles: Number of particles to initialize.
-    - region_limits: Tuple (min_limits, max_limits) defining the 3D region.
+    def __init__(self, num_particles):
+        self.num_particles = num_particles
+        self.region_limits = None
+        # self.particles = self.initialize_particles()
+        self.bounding_generating_iter = 0
+        self.MAXIMUM_BBOX_ITER = 3
+        # Additional variables for storing current ranges
+        self.field_names=("x", "y", "z")
+        self.pp_iteration = 10
+        # self.object_sub = rospy.Subscriber('melon_result_pc',PointCloud2,callback=particle_filter.object_points_callback)
 
-    Returns:
-    - particles: NumPy array of shape (num_particles, 3) representing 3D positions.
-    """
+        
+    def initialize_particles(self):
+        min_limits, max_limits = self.region_limits
+        particles = np.random.uniform(min_limits, max_limits, size=(self.num_particles, 3))
+        return particles
 
-    min_limits, max_limits = region_limits
+    def motion_model(self, particles, previous_positions, noise_scale=0.5):
+        adjustments = noise_scale * np.random.randn(*particles.shape)
+        predicted_positions = previous_positions + adjustments
+        return predicted_positions
 
-    # Generate random 3D positions for particles within the specified region
-    particles = np.random.uniform(min_limits, max_limits, size=(num_particles, 3))
+    def update_particles_from_pointcloud(self,particles, P_petiole):
+        weights = np.zeros(len(particles))
 
-    return particles
+        for i, particle in enumerate(particles):
+            distances = np.linalg.norm(particle - P_petiole, axis=1)
+            min_distance = np.min(distances)
+            weights[i] = 1 / (min_distance + 1e-6)
 
-def motion_model(particles, previous_positions, noise_scale=0.5):
-    """
-    Apply a simple motion model to predict the next position of particles.
+        weights /= np.sum(weights)
+        return weights
 
-    Parameters:
-    - particles: NumPy array of shape (num_particles, 3) representing current 3D positions.
-    - previous_positions: NumPy array of shape (num_particles, 3) representing previous positions.
-    - noise_scale: Scaling factor for introducing small adjustments (noise) in the motion model.
+    def visualize_particles_with_weights(self, particles, weights, point_cloud=None):
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+        scaled_weights = 100 * weights
+        scatter = ax.scatter(particles[:, 0], particles[:, 1], particles[:, 2], c=scaled_weights, cmap='viridis')
+        
+        if point_cloud is not None:
+            # Visualize the point cloud in red
+            ax.scatter(point_cloud[:, 0], point_cloud[:, 1], point_cloud[:, 2], c='red', marker='o', label='Point Cloud')
+        
+        cbar = plt.colorbar(scatter)
+        cbar.set_label('Particle Weights')
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_zlabel('Z')
+        ax.set_xlim([self.region_limits[0][0], self.region_limits[1][0]])
+        ax.set_ylim([self.region_limits[0][1], self.region_limits[1][1]])
+        ax.set_zlim([self.region_limits[0][2], self.region_limits[1][2]])
+        ax.set_title('Particle Visualization with Weights')
+        
+        # Add a legend
+        ax.legend()
 
-    Returns:
-    - predicted_positions: NumPy array of shape (num_particles, 3) representing predicted 3D positions.
-    """
-
-    # Simple motion model: Add small adjustments to the previous positions
-    adjustments = noise_scale * np.random.randn(*particles.shape)
-    predicted_positions = previous_positions + adjustments
-
-    return predicted_positions
-
-def update_particles_from_pointcloud(particles, P_petiole):
-    """
-    Update particle weights based on 3D point cloud of petioles.
-
-    Parameters:
-    - particles: NumPy array of shape (num_particles, 3) representing current 3D positions.
-    - P_petiole: NumPy array of shape (num_petioles, 3) representing 3D positions of petioles.
-
-    Returns:
-    - weights: NumPy array of shape (num_particles,) representing particle weights.
-    """
-
-    weights = np.zeros(len(particles))
-
-    for i, particle in enumerate(particles):
-        # Compute weight based on the distance to the closest petiole in P_petiole
-        distances = np.linalg.norm(particle - P_petiole, axis=1)
-        min_distance = np.min(distances)
-
-        # Assign weight inversely proportional to the distance
-        weights[i] = 1 / (min_distance + 1e-6)  # Adding a small epsilon to avoid division by zero
-
-    # Normalize weights
-    weights /= np.sum(weights)
-
-    return weights
-
-def visualize_particles_with_weights(particles, weights):
-    """
-    Visualize 3D particles with colors representing their weights.
-
-    Parameters:
-    - particles: NumPy array of shape (num_particles, 3) representing 3D positions.
-    - weights: NumPy array of shape (num_particles,) representing particle weights.
-    """
-
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection='3d')
-
-    # Scale weights for better visualization
-    scaled_weights = 100 * weights
-
-    # Scatter plot with colors based on weights
-    scatter = ax.scatter(particles[:, 0], particles[:, 1], particles[:, 2], c=scaled_weights, cmap='viridis')
-
-    # Add colorbar to show the correspondence between color and weight
-    cbar = plt.colorbar(scatter)
-    cbar.set_label('Particle Weights')
-
-    ax.set_xlabel('X')
-    ax.set_ylabel('Y')
-    ax.set_zlabel('Z')
-    ax.set_xlim([0.2,1.0])
-    ax.set_ylim([-0.5,0.5])
-    ax.set_zlim([0,1.56])
-    ax.set_title('Particle Visualization with Weights')
-
-    plt.show()
-
-def resample_particles(particles, weights, num_random_points = 20, noise_scale=0.003):
-    """
-    Resample particles based on their weights.
-
-    Parameters:
-    - particles: NumPy array of shape (num_particles, 3) representing current 3D positions.
-    - weights: NumPy array of shape (num_particles,) representing particle weights.
-
-    Returns:
-    - resampled_particles: NumPy array of shape (num_particles, 3) representing resampled 3D positions.
-    """
-
-    num_particles = len(particles)
-    indices = np.arange(num_particles)
-
-    # Resample particles based on their weights
-    resampled_indices = np.random.choice(indices, size=num_particles, replace=True, p=weights)
-
-    # Select the particles with the resampled indices
-    resampled_particles = particles[resampled_indices]
+        plt.show()
 
 
-    # Add additional random noise to the resampled particles
-    noise = noise_scale * np.random.randn(*resampled_particles.shape)
-    resampled_particles += noise
-    # Assign uniform weights after resampling
-    resampled_weights = np.ones(num_particles) / num_particles
-    print(np.sum(resampled_weights))
-    # Introduce additional random points
-    random_points = generate_random_points_3d(num_random_points, region_limits)
-    resampled_particles = np.vstack([resampled_particles, random_points])
-    resampled_weights = np.concatenate([resampled_weights, np.ones(num_random_points) / (num_particles + num_random_points)])
+    def resample_particles(self,particles, weights, num_random_points=20, noise_scale=0.003):
+        num_particles = len(particles)
+        indices = np.arange(num_particles)
+        resampled_indices = np.random.choice(indices, size=num_particles, replace=True, p=weights)
+        resampled_particles = particles[resampled_indices]
+        noise = noise_scale * np.random.randn(*resampled_particles.shape)
+        resampled_particles += noise
+        resampled_weights = np.ones(num_particles) / num_particles
 
-    return resampled_particles, resampled_weights
+        random_points = self.generate_random_points_3d(num_random_points)
+        resampled_particles = np.vstack([resampled_particles, random_points])
+        resampled_weights = np.concatenate([resampled_weights, np.ones(num_random_points) / (num_particles + num_random_points)])
 
-def generate_line(num_points, region_limits):
-    """
-    Generate a line within specified region limits.
+        return resampled_particles, resampled_weights
 
-    Parameters:
-    - num_points: Number of points to sample along the line.
-    - region_limits: Tuple of two points representing the region limits in the form ((min_x, min_y, min_z), (max_x, max_y, max_z)).
+    def _get_pointcloud(self)->np.ndarray:
+        msg:PointCloud2 = PointCloud2()
+        try:
+            msg:PointCloud2 = rospy.wait_for_message('melon_result_pc',PointCloud2,timeout=5)
+            cloud = pc2.read_points(msg, field_names=self.field_names, skip_nans=True)
+            points = np.array(list(cloud), dtype=np.float32)
+            return points
+        except:
+            return None
 
-    Returns:
-    - line_points: NumPy array of shape (num_points, 3) representing points along the generated line.
-    """
+    def generate_random_points_3d(self, num_points):
+        x_limit, y_limit, z_limit = zip(*self.region_limits)
+        x_coordinates = np.random.uniform(low=x_limit[0], high=x_limit[1], size=num_points)
+        y_coordinates = np.random.uniform(low=y_limit[0], high=y_limit[1], size=num_points)
+        z_coordinates = np.random.uniform(low=z_limit[0], high=z_limit[1], size=num_points)
+        coordinates = np.array([x_coordinates, y_coordinates, z_coordinates]).T
+        return coordinates
 
-    # Extract region limits
-    min_limits, max_limits = region_limits
+    def generate_bounding_box(self, expanding_factor = 1.5)->bool:
+        self.current_x_range = [0.,0.]
+        self.current_y_range = [0.,0.]
+        self.current_z_range = [0.,0.]
+        while(self.bounding_generating_iter < self.MAXIMUM_BBOX_ITER):
+            points =self._get_pointcloud()
+            if(points is None): return False
 
-    # Generate random parameters for the line within the specified limits
-    t_values = np.linspace(0, 1, num_points)
-    x_values = np.linspace(min_limits[0], max_limits[0], num_points)
-    y_values = np.linspace(min_limits[1], max_limits[1], num_points)
-    z_values = np.linspace(min_limits[2], max_limits[2], num_points)
+            print("Received {} points.".format(len(points)))
+            # Update current ranges based on the received points
+            self.current_x_range[0] += np.min(points[:, 0])
+            self.current_x_range[1] += np.max(points[:, 0])
 
-    # Combine the parameters to get points along the line
-    line_points = np.column_stack((x_values, y_values, z_values))
+            self.current_y_range[0] += np.min(points[:, 1])
+            self.current_y_range[1] += np.max(points[:, 1])
 
-    return line_points
+            self.current_z_range[0] += np.min(points[:, 2])
+            self.current_z_range[1] += np.max(points[:, 2])
+            self.bounding_generating_iter += 1
+            # del msg
+        else:
+            # Increment bounding box generation iteration
+            print("Iter=",self.bounding_generating_iter)
+            # Calculate average limitations
+            avg_x_limit_l = np.mean(self.current_x_range[0])/self.MAXIMUM_BBOX_ITER
+            avg_y_limit_l = np.mean(self.current_y_range[0])/self.MAXIMUM_BBOX_ITER
+            avg_z_limit_l = np.mean(self.current_z_range[0])/self.MAXIMUM_BBOX_ITER
+            avg_x_limit_u = np.mean(self.current_x_range[1])/self.MAXIMUM_BBOX_ITER 
+            avg_y_limit_u = np.mean(self.current_y_range[1])/self.MAXIMUM_BBOX_ITER 
+            avg_z_limit_u = np.mean(self.current_z_range[1])/self.MAXIMUM_BBOX_ITER
+            margin_x = abs(avg_x_limit_u - avg_x_limit_l)/2. * expanding_factor
+            margin_y = abs(avg_y_limit_u - avg_y_limit_l)/2. * expanding_factor
+            margin_z = abs(avg_z_limit_u - avg_z_limit_l)/2. * expanding_factor
+            avg_x_limit_l -= margin_x
+            avg_y_limit_l -= margin_y
+            avg_z_limit_l -= margin_z
+            avg_x_limit_u += margin_x
+            avg_y_limit_u += margin_y
+            avg_z_limit_u += margin_z
 
-def generate_random_points_3d(num_points, region_limits):
-    # Extract individual limits for x, y, and z from region_limits
-    x_limit, y_limit, z_limit = zip(*region_limits)
+            self.region_limits = ((avg_x_limit_l,avg_y_limit_l,avg_z_limit_l),
+                                (avg_x_limit_u,avg_y_limit_u,avg_z_limit_u))
+            rospy.loginfo("Region Limits Calculated:%s",str(self.region_limits))
+            return True
+        
+    def run(self):
+        particles = self.initialize_particles()
+        for i in tqdm(range(self.pp_iteration)):
+            # Example usage:
+            previous_positions = particles  # Assuming particles have been initialized
+            predicted_positions = self.motion_model(particles, previous_positions, noise_scale=0.3)
 
-    # Generate random x, y, and z coordinates within the specified limits
-    x_coordinates = np.random.uniform(low=x_limit[0], high=x_limit[1], size=num_points)
-    y_coordinates = np.random.uniform(low=y_limit[0], high=y_limit[1], size=num_points)
-    z_coordinates = np.random.uniform(low=z_limit[0], high=z_limit[1], size=num_points)
+            # Update particle weights
+            # For group
+            objective = self._get_pointcloud()
+            weights = self.update_particles_from_pointcloud(particles, objective)
+            if(i <= self.pp_iteration - 1):
+                resampled_particles, new_weights = self.resample_particles(particles, weights,num_random_points=0)
+            else:
+                continue
+            # self.visualize_particles_with_weights(resampled_particles,weights, objective)
+
+            particles = resampled_particles
+            weights = new_weights
+        self.visualize_particles_with_weights(resampled_particles,weights, objective)
+
+class ParticleFilter_Multiple_Objects:
+
+    def __init__(self, num_particles):
+        self.num_particles = num_particles
+        self.region_limits = None
+        self.bounding_generating_iter = 0
+        self.MAXIMUM_BBOX_ITER = 5
+        # Additional variables for storing current ranges
+        self.field_names=("x", "y", "z")
+        self.pp_iteration = 10
+        # self.object_sub = rospy.Subscriber('melon_result_pc',PointCloud2,callback=particle_filter.object_points_callback)
+        self.group_ranges = []
+        
+    def initialize_particles(self, region_limits):
+        min_limits, max_limits = region_limits
+        particles = np.random.uniform(min_limits, max_limits, size=(self.num_particles, 3))
+        return particles
+
+    def motion_model(self, particles, previous_positions, noise_scale=0.5):
+        adjustments = noise_scale * np.random.randn(*particles.shape)
+        predicted_positions = previous_positions + adjustments
+        return predicted_positions
+
+    def update_particles_from_pointcloud(self,particles, P_petiole):
+        weights = np.zeros(len(particles))
+
+        for i, particle in enumerate(particles):
+            distances = np.linalg.norm(particle - P_petiole, axis=1)
+            min_distance = np.min(distances)
+            weights[i] = 1 / (min_distance + 1e-6)
+
+        weights /= np.sum(weights)
+        return weights
+    def visualize_particles(self, particles):
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+        # fig, axes = plt.subplots(1, len(self.group_ranges), subplot_kw={'projection': '3d'}, figsize=(15, 5))
+        # for i, ax in enumerate(axes):
+        for particle in particles:
+            ax.scatter(particle[:, 0], particle[:, 1], particle[:, 2])
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_zlabel('Z')
+        ax.legend()
+        plt.show()
     
-    # Merge the coordinates into a single NumPy array
-    coordinates = np.array([x_coordinates, y_coordinates, z_coordinates]).T
-    
-    return coordinates
+    def visualize_particles_with_weights(self, particles, weights, region_limits,  point_cloud=None):
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+        scaled_weights = 100 * weights
+        scatter = ax.scatter(particles[:, 0], particles[:, 1], particles[:, 2], c=scaled_weights, cmap='viridis')
+        
+        if point_cloud is not None:
+            # Visualize the point cloud in red
+            ax.scatter(point_cloud[:, 0], point_cloud[:, 1], point_cloud[:, 2], c='red', marker='o', label='Point Cloud')
+        
+        cbar = plt.colorbar(scatter)
+        cbar.set_label('Particle Weights')
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_zlabel('Z')
+        ax.set_xlim([region_limits[0][0], region_limits[1][0]])
+        ax.set_ylim([region_limits[0][1], region_limits[1][1]])
+        ax.set_zlim([region_limits[0][2], region_limits[1][2]])
+        ax.set_title('Particle Visualization with Weights')
+        
+        # Add a legend
+        ax.legend()
+
+        plt.show()
 
 
-# Add a bounding box, any points outside this b_box, generate a new PP
+    def resample_particles(self,particles, weights, region, num_random_points=20, noise_scale=0.003):
+        num_particles = len(particles)
+        indices = np.arange(num_particles)
+        resampled_indices = np.random.choice(indices, size=num_particles, replace=True, p=weights)
+        resampled_particles = particles[resampled_indices]
+        noise = noise_scale * np.random.randn(*resampled_particles.shape)
+        resampled_particles += noise
+        resampled_weights = np.ones(num_particles) / num_particles
 
-# Example usage:
-num_particles = 3000
-region_limits = ((0.2, -0.5, 0), (1.0, 0.5, 1.56))  # Adjust these limits based on your scenario
-expanded_region_limits = ((-1., -1., 0.), (1.0, 1.0,  1.8)) # Adjust these limits based on your scenario
-# P_petiole = np.random.rand(50, 3)  # Replace with your actual 3D point cloud from YOLOv5
+        random_points = self.generate_random_points_3d(num_random_points,region)
+        resampled_particles = np.vstack([resampled_particles, random_points])
+        resampled_weights = np.concatenate([resampled_weights, np.ones(num_random_points) / (num_particles + num_random_points)])
 
-num_points = 200
-P_petiole_1 = generate_random_points_3d(num_points,((0.55, -0.05, 0.1), (0.65, 0.05, 0.15)))
-P_petiole_2 = generate_random_points_3d(num_points,((0.55, -0.05, 1.3), (0.65, 0.05, 1.4)))
-P_petiole = P_petiole_1
-particles = initialize_particles(num_particles, expanded_region_limits)
+        return resampled_particles, resampled_weights
 
-# Visualize the line
-# fig = plt.figure()
-# ax = fig.add_subplot(111, projection='3d')
-# ax.scatter(P_petiole[:, 0], P_petiole[:, 1], P_petiole[:, 2], c='b', marker='o', label='Generated Line')
-# # Set axis labels
-# ax.set_xlabel('X')
-# ax.set_ylabel('Y')
-# ax.set_zlabel('Z')
-# # Set plot title
-# ax.set_title('Generated Line Visualization')
-# ax.set_xlim([0.2,1.0])
-# ax.set_ylim([-0.5,0.5])
-# ax.set_zlim([0,1.56])
-# # Show the plot
-# plt.legend()
-# plt.show()
+    def _get_pointcloud(self, obj_class = 0)->[np.ndarray]:
+        msg:nn_objects = nn_objects()
+        try:
+            msg:nn_objects = rospy.wait_for_message('yolo_results',nn_objects,timeout=5)
+            object_points = []
+            for i in range(len(msg.object_clouds)):
+                obj_pointcloud = msg.object_clouds[i]
+                if(msg.object_classes[i].data == obj_class or obj_class == -1):
+                    cloud = pc2.read_points(obj_pointcloud, field_names=self.field_names, skip_nans=True)
+                    points = np.array(list(cloud), dtype=np.float32)
+                    object_points.append(points)
+            return object_points
+        except:
+            return None
 
-for i in range(20):
-    # Example usage:
-    previous_positions = particles  # Assuming particles have been initialized
-    predicted_positions = motion_model(particles, previous_positions, noise_scale=0.3)
+    def generate_random_points_3d(self, num_points, region):
+        x_limit, y_limit, z_limit = zip(*region)
+        x_coordinates = np.random.uniform(low=x_limit[0], high=x_limit[1], size=num_points)
+        y_coordinates = np.random.uniform(low=y_limit[0], high=y_limit[1], size=num_points)
+        z_coordinates = np.random.uniform(low=z_limit[0], high=z_limit[1], size=num_points)
+        coordinates = np.array([x_coordinates, y_coordinates, z_coordinates]).T
+        return coordinates
 
-    # Update particle weights
-    
-    weights = update_particles_from_pointcloud(particles, P_petiole)
+    def generate_bounding_box(self, expanding_factor = 1.5)->bool:
 
-    resampled_particles, new_weights = resample_particles(particles, weights)
-    # visualize_particles_with_weights(resampled_particles,weights)
+        #collect the incoming data first
+        rospy.loginfo("Collecting Detected Object Point Cloud.")
+        detected_object_points_list = []
+        for i in tqdm(range(self.MAXIMUM_BBOX_ITER)):
+            cloud_list = self._get_pointcloud(obj_class=0)
+            for cloud in cloud_list:
+                detected_object_points_list.append(cloud)
+        centroids = np.array([])
+        for cloud in tqdm(detected_object_points_list):
+            centroid = np.mean(cloud,axis=0)
+            centroids = np.append(centroids, centroid, axis=0)
+        centroids = centroids.reshape(-1, 3)
+        # Try different values of n_clusters and calculate silhouette scores
+        silhouette_scores = []
+        for n_clusters in range(2, 5):
+            kmeans = KMeans(n_clusters=n_clusters)
+            kmeans.fit(centroids)
+            labels = kmeans.labels_
+            silhouette_avg = silhouette_score(centroids, labels)
+            silhouette_scores.append(silhouette_avg)
 
-    particles = resampled_particles
-    weights = new_weights
+        # Find the optimal number of clusters with the highest silhouette score
+        optimal_n_clusters = np.argmax(silhouette_scores) + 2  # Add 2 because the loop starts from 2 clusters
+        print(optimal_n_clusters)
+
+        kmeans = KMeans(n_clusters=optimal_n_clusters)
+        kmeans.fit(centroids)
+
+        cluster_centers = kmeans.cluster_centers_
+        self.cluster_centers = kmeans.cluster_centers_
+        labels = kmeans.labels_
+        self.pp_group_num = optimal_n_clusters
+
+        print(cluster_centers, labels)
+        
+        for i in range(optimal_n_clusters):
+            cluster_clouds = np.array(detected_object_points_list,dtype=object)[labels==i]
+            current_x_range = [0.,0.]
+            current_y_range = [0.,0.]
+            current_z_range = [0.,0.]
+            for cloud in cluster_clouds:
+                current_x_range[0] += np.min(cloud[:, 0])
+                current_x_range[1] += np.max(cloud[:, 0])
+                current_y_range[0] += np.min(cloud[:, 1])
+                current_y_range[1] += np.max(cloud[:, 1])
+                current_z_range[0] += np.min(cloud[:, 2])
+                current_z_range[1] += np.max(cloud[:, 2])
+            avg_x_limit_l = np.mean(current_x_range[0])/self.MAXIMUM_BBOX_ITER
+            avg_y_limit_l = np.mean(current_y_range[0])/self.MAXIMUM_BBOX_ITER
+            avg_z_limit_l = np.mean(current_z_range[0])/self.MAXIMUM_BBOX_ITER
+            avg_x_limit_u = np.mean(current_x_range[1])/self.MAXIMUM_BBOX_ITER 
+            avg_y_limit_u = np.mean(current_y_range[1])/self.MAXIMUM_BBOX_ITER 
+            avg_z_limit_u = np.mean(current_z_range[1])/self.MAXIMUM_BBOX_ITER
+            margin_x = abs(avg_x_limit_u - avg_x_limit_l)/2. * expanding_factor
+            margin_y = abs(avg_y_limit_u - avg_y_limit_l)/2. * expanding_factor
+            margin_z = abs(avg_z_limit_u - avg_z_limit_l)/2. * expanding_factor
+            avg_x_limit_l -= margin_x
+            avg_y_limit_l -= margin_y
+            avg_z_limit_l -= margin_z
+            avg_x_limit_u += margin_x
+            avg_y_limit_u += margin_y
+            avg_z_limit_u += margin_z
+            self.group_ranges.append(((avg_x_limit_l,avg_y_limit_l,avg_z_limit_l),
+                                (avg_x_limit_u,avg_y_limit_u,avg_z_limit_u)))
+        rospy.loginfo("Region Limits Calculated:%s",str(self.group_ranges))
+        
+    def run(self):
+        self.particles = []
+        iteration = []
+        for region in self.group_ranges:
+            self.particles.append(self.initialize_particles(region)) 
+            iteration.append(0)
+
+        # print("here")
+        # particles = self.initialize_particles()
+        for i in tqdm(range(self.pp_iteration)):
+            object_clouds = self._get_pointcloud()
+            for cloud in object_clouds:
+                #make sure which group
+                label = -1
+                c = np.mean(cloud,axis=0)
+                for j in range(len(self.cluster_centers)):
+                    centroid = self.cluster_centers[j]
+                    dist = np.linalg.norm(c - centroid)
+                    if(dist < 0.01): 
+                        label = j
+                        break
+                # print("Label:",label)
+
+                # Example usage:
+                previous_positions = self.particles[label]  # Assuming particles have been initialized
+                predicted_positions = self.motion_model(self.particles[label], previous_positions, noise_scale=0.3)
+
+                weights = self.update_particles_from_pointcloud(self.particles[label], cloud)
+
+                if(i <= self.pp_iteration - 1):
+                    resampled_particles, new_weights = self.resample_particles(self.particles[label], weights,self.group_ranges[label],num_random_points=0)
+                else:
+                    continue
+                # self.visualize_particles_with_weights(resampled_particles,weights, self.group_ranges[label], cloud)
+
+                self.particles[label] = resampled_particles
+            # return
+        
+            # Update particle weights
+            # For group
+            # objective = self._get_pointcloud()
+            # weights = self.update_particles_from_pointcloud(particles, objective)
+            # if(i <= self.pp_iteration - 1):
+            #     resampled_particles, new_weights = self.resample_particles(particles, weights,num_random_points=0)
+            # else:
+            #     continue
+            # # self.visualize_particles_with_weights(resampled_particles,weights, objective)
+
+            # particles = resampled_particles
+            # weights = new_weights
+        # self.visualize_particles_with_weights(resampled_particles,weights, objective)
 
 
-print("Resampled particles:")
-print(len(resampled_particles))
 
-visualize_particles_with_weights(resampled_particles,weights)
-# visualize_particles_with_weights(P_petiole,weights[0:30])
+rospy.init_node('particle_filter',anonymous=False)
+# iteration = 20
+# num_particles = 1000
+# expanded_region_limits = ((-1., -1., 0.), (1.0, 1.0,  1.8)) # Adjust these limits based on your scenario
+# particle_filter = ParticleFilter_Single_Object(num_particles)
+# if(particle_filter.generate_bounding_box(expanding_factor=1.2)):
+#     particle_filter.run()
+#     pass
+
+ppf = ParticleFilter_Multiple_Objects(1000)
+ppf.generate_bounding_box()
+ppf.run()
+ppf.visualize_particles(ppf.particles)
+# print(ppf._get_pointcloud())
+# rospy.spin()
+
