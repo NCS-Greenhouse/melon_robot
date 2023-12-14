@@ -130,8 +130,6 @@ int main(int argc, char** argv) {
         ros_pc_msg.header.frame_id = "realsense_fixture";
         ros_pc_msg.header.stamp = ros::Time().now();
         pointcloud_pub.publish(ros_pc_msg);
-
-
     }
     return 0;
 }
