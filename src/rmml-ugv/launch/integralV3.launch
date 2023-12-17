@@ -1,25 +1,32 @@
 <?xml version="1.0"?>
 <launch>
   
-
+  <!-- Valid commands are ['find', 'env', 'optenv', 'dirname', 'anon', 'arg'] -->
 
   <!-- ************** Original integral ***************  -->
-  <arg name="joy_dev" default="Logitech Gamepad F710" />
-    <!-- <node pkg="joy" type="joy_node" name="joy_node">
+  <arg name="joy_dev" default="Logitech Gamepad F710" /> <!-- This is X Mode-->
+  <!-- <arg name="joy_dev" default="Logitech Logitech Cordless RumblePad 2" /> --> <!-- This is D Mode-->
+    <node pkg="joy" type="joy_node" name="joy_node">
       <param name="dev_name" value="$(arg joy_dev)" />
+      <param name="dev" value="/dev/input/js0" />
       <param name="deadzone" value="0.05" />
       <param name="autorepeat_rate" value="0" />
-    </node> -->
+    </node>
 
-    <!-- <node name="joy" pkg="teapicking" type="joy.py" output="screen">
+    <node name="joy" pkg="rmml-ugv" type="joy.py" output="screen"></node>
+
+    <!-- <include file= "$(find realsense2_camera)/launch/rs_d435i.launch"/>  -->
+    <include file= "$(find rmml-ugv)/launch/ugv_rs_d435i.launch"/>
+<!-- 035322251061 -->
+<!-- 825312071830 -->
+    <node name="EKF" pkg="rmml-ugv" type="EKF_pose.py" output="screen">
+      <param name="mode" value="4" />
     </node>
-    <include file= "/home/mic-710aix/catkin_ws/src/realsense-ros/realsense2_camera/launch/rs_d435i.launch"/> 
-    <node name="EKF" pkg="teapicking" type="EKF_pose.py" output="screen">
-    <param name="mode" value="4" />
+
+    <node name="slip" pkg="rmml-ugv" type="slipEvaluate.py" output="screen">
     </node>
-    <node name="slip" pkg="teapicking" type="slipEvaluate.py" output="screen">
-    </node>
-    <node name="http" pkg="teapicking" type="_http.py" output="screen">
+
+    <!-- <node name="http" pkg="teapicking" type="_http.py" output="screen">
     </node> -->
 
 
@@ -27,24 +34,24 @@
     <!-- <include file= "/home/mic-710aix/catkin_ws/src/rplidar_ros/launch/rplidar.launch"/> -->
 
   <!-- Map server -->
-    <!-- <arg name="map_file" default="/home/mic-710aix/catkin_ws/src/rplidar_ros/maps/greenhouse_karto99_much-fixed.yaml"/>
-    <node name="map_server" pkg="map_server" type="map_server" args="$(arg map_file)" /> -->
+    <!-- <arg name="map_file" default="$(find rplidar_ros)/maps/greenhouse_karto99_much-fixed.yaml"/> -->
+    <node name="map_server" pkg="map_server" type="map_server" args="$(find rplidar_ros)/maps/greenhouse_karto99_much-fixed.yaml" />
 
   <!-- TF -->
-    <!-- <node pkg="tf" type="static_transform_publisher" name="map_world_link_broadcaster" args="0 0 0 0 0 0 map world 100">
+    <node pkg="tf" type="static_transform_publisher" name="map_world_link_broadcaster" args="0 0 0 0 0 0 map world 100">
     </node>
     <node pkg="tf" type="static_transform_publisher" name="base_link_to_laser" args="0.67 0 0 0 0 0 base_link laser 100">
     </node>
-    <node name="odometry_publisher" pkg="teapicking" type="ros_odometry_publisher_example.py">
-    </node> -->
+    <node name="odometry_publisher" pkg="rmml-ugv" type="ros_odometry_publisher.py">
+    </node>
 
   <!-- ********************* Move_base(1.0) + AMCL ********************* -->
-    <!-- <include file= "/home/mic-710aix/catkin_ws/src/turtlebot_apps/turtlebot_navigation/launch/amcl_cyli.launch"/>  -->
+    <include file= "$(find turtlebot_apps)/turtlebot_navigation/launch/amcl_cyli.launch"/> 
 
 
   <!-- ********************* Download ********************* -->
-    <!-- <node name="download" pkg="teapicking" type="getV4.py" output="screen" respawn="true">
-    </node> -->
+    <node name="download" pkg="rmml-ugv" type="getV4.py" output="screen" respawn="true">
+    </node>
 
 
   <!--********************* Upload ********************* -->

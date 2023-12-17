@@ -7,3 +7,9 @@
 [submodule "src/hrl-kdl"]
 	path = src/hrl-kdl
 	url = https://github.com/NCS-Greenhouse/hrl-kdl.git
+[submodule "src/rplidar_ros"]
+	path = src/rplidar_ros
+	url = https://github.com/Slamtec/rplidar_ros.git
+[submodule "src/turtlebot_msgs"]
+	path = src/turtlebot_msgs
+	url = https://github.com/turtlebot/turtlebot_msgs.git
