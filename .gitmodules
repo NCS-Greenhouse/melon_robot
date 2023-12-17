@@ -10,6 +10,3 @@
 [submodule "src/turtlebot_msgs"]
 	path = src/turtlebot_msgs
 	url = https://github.com/turtlebot/turtlebot_msgs.git
-[submodule "src/rplidar_ros"]
-	path = src/rplidar_ros
-	url = https://github.com/NCS-Greenhouse/rplidar_ros.git
