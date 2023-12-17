@@ -166,6 +166,7 @@ catkin_install_python(PROGRAMS
   scripts/ros_odometry_publisher.py
   scripts/getV4.py
   scripts/advantech_utils.py
+  scripts/console_xy_revise0323.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 

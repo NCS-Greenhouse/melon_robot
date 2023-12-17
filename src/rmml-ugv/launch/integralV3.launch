@@ -46,7 +46,7 @@
     </node>
 
   <!-- ********************* Move_base(1.0) + AMCL ********************* -->
-    <include file= "$(find turtlebot_apps)/turtlebot_navigation/launch/amcl_cyli.launch"/> 
+    <include file= "$(find turtlebot_navigation)/launch/amcl_cyli.launch"/> 
 
 
   <!-- ********************* Download ********************* -->
@@ -55,8 +55,8 @@
 
 
   <!--********************* Upload ********************* -->
-    <!-- <node name="upload" pkg="teapicking" type="console_xy_revise0323.py" output="screen">
-    </node> -->
+    <node name="upload" pkg="rmml-ugv" type="console_xy_revise0323.py" output="screen">
+    </node>
 
   
   <!--********************* check and upload UVG power ********************* -->
