@@ -68,7 +68,7 @@ def __generateBatchData():    # send data in batch for high frequency data
     array.append(edgeData)
 
 def __generateData(): 
-  global controlCommand
+  # global controlCommand
   edgeData = EdgeData()
   for i in range(1, 1 + 1):
     for j in range(1, 1 + 1):
@@ -120,7 +120,7 @@ def __generateData():
 
 
 def amcl_pose_callback(msg:PoseWithCovarianceStamped):
-  global controlCommand, x, y, theta, r, q_z, q_w, x_origin, y_origin, last_position
+  global x, y, theta, r, q_z, q_w, x_origin, y_origin, last_position
   r = 0.60
   theta = -(math.atan2(2*(msg.pose.pose.orientation.w*msg.pose.pose.orientation.z),1-2*math.pow(msg.pose.pose.orientation.z,2)) + 3.14159/2)
   x0 = msg.pose.pose.position.x +0.0*math.cos(theta)-0.0*math.sin(theta) #- 22.919# in order to fit the 3D simulation (map change origin)

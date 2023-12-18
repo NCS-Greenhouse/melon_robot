@@ -1,4 +1,20 @@
 #!/usr/bin/env python3
+
+#
+# Transplanted on Mon Dec 18 2023
+#
+# Copyright (c) 2023 NCS-Greenhouse-Group
+#
+# Modified by:ShengDao Du, Email: duchengdao@gmail.com
+# Github Page: https://github.com/Runnlion
+# Personal Page: https://shengdao.me
+#
+# Author:kiven, Email: kevin88121698@gmail.com
+# Github Page: https://github.com/kevin88121698
+#
+
+# This file is to evaluete the location of the UGV and improve the accuracy of the estimated location
+
 import rospy
 import roslaunch
 from std_msgs.msg import Int16, String, Float32
@@ -258,7 +274,6 @@ def gyroBias_callback(msg:Float32):
     gyroBias = msg.data
            
 
-
 if __name__ == '__main__':
     rospy.init_node("EKF")
     mode = int(rospy.get_param("~mode", default=4))
@@ -296,6 +311,7 @@ if __name__ == '__main__':
                                 [0, 0, 0, 0, 0]]) * dt
         ekf.R = np.diag([x_lidar_cov,y_lidar_cov,th_lidar_cov,v_encoder_cov,w_encoder_cov,v_vision_cov,w_vision_cov,w_gyro_cov])
         ekf.Q = np.diag([1e-04,1e-04,1e-06,1e-04,1e-04]) 
+    
     if(mode == 1):
         rospy.Subscriber("/slam_out_pose", PoseStamped, slam_clbk ,queue_size=1,buff_size=52428800)
         rospy.Subscriber('/feedback/RPM', String,odom_callback)
@@ -342,6 +358,7 @@ if __name__ == '__main__':
                                    [0, 0, 0, 0, 0],
                                    [0, 0, 0, 0, 0]]) * dt
         ekf_pose=np.array(ekf.x, dtype=np.float32)
+        
         if(mode == 3):
             pubGyroBias.publish(gyroBias)
         # print(ekf_pose)

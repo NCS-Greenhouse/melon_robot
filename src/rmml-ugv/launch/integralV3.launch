@@ -3,65 +3,68 @@
   
   <!-- Valid commands are ['find', 'env', 'optenv', 'dirname', 'anon', 'arg'] -->
 
-  <!-- ************** Original integral ***************  -->
-  <arg name="joy_dev" default="Logitech Gamepad F710" /> <!-- This is X Mode-->
-  <!-- <arg name="joy_dev" default="Logitech Logitech Cordless RumblePad 2" /> --> <!-- This is D Mode-->
-    <node pkg="joy" type="joy_node" name="joy_node">
-      <param name="dev_name" value="$(arg joy_dev)" />
-      <param name="dev" value="/dev/input/js0" />
-      <param name="deadzone" value="0.05" />
-      <param name="autorepeat_rate" value="0" />
-    </node>
+  <!-- ************** Joy Driver and UGV Joy Controller ***************  -->
+  <arg name="joy_dev" default="Logitech Gamepad F710" /> 
+    <!-- This is X Mode-->  
+    <!-- <arg name="joy_dev" default="Logitech Logitech Cordless RumblePad 2" /> --> <!-- This is D Mode-->
+  <node pkg="joy" type="joy_node" name="joy_node">
+    <param name="dev_name" value="$(arg joy_dev)" />
+    <param name="dev" value="/dev/input/js0" />
+    <param name="deadzone" value="0.05" />
+    <param name="autorepeat_rate" value="0" />
+  </node>
+  <node name="joy" pkg="rmml-ugv" type="joy.py" output="screen"></node>
 
-    <node name="joy" pkg="rmml-ugv" type="joy.py" output="screen"></node>
 
-    <!-- <include file= "$(find realsense2_camera)/launch/rs_d435i.launch"/>  -->
-    <include file= "$(find rmml-ugv)/launch/ugv_rs_d435i.launch"/>
-<!-- 035322251061 -->
-<!-- 825312071830 -->
-    <node name="EKF" pkg="rmml-ugv" type="EKF_pose.py" output="screen">
-      <param name="mode" value="4" />
-    </node>
+  <!-- ************** Realsense D435, Usage: get the IMU informatoon ***************  -->
+  <include file= "$(find rmml-ugv)/launch/ugv_rs_d435i.launch"/>
+    <!-- Candidate Serial Number -->
+    <!-- 035322251061 -->
+    <!-- 825312071830 -->
 
-    <node name="slip" pkg="rmml-ugv" type="slipEvaluate.py" output="screen">
-    </node>
 
-    <!-- <node name="http" pkg="teapicking" type="_http.py" output="screen">
-    </node> -->
 
+  <!-- ************** Improve the accuracy of the evaluated position/orientation ***************  -->
+  <node name="EKF" pkg="rmml-ugv" type="EKF_pose.py" output="screen">
+    <param name="mode" value="4" />
+  </node>
+  <node name="slip" pkg="rmml-ugv" type="slipEvaluate.py" output="screen">
+  </node>
+
+  
+  <!-- *************** UGV Driver controller via ethernet ***************  -->
+  <node name="http" pkg="teapicking" type="_http.py" output="screen"/>
 
 
     <!-- <include file= "/home/mic-710aix/catkin_ws/src/rplidar_ros/launch/rplidar.launch"/> -->
 
   <!-- Map server -->
     <!-- <arg name="map_file" default="$(find rplidar_ros)/maps/greenhouse_karto99_much-fixed.yaml"/> -->
-    <node name="map_server" pkg="map_server" type="map_server" args="$(find rplidar_ros)/maps/greenhouse_karto99_much-fixed.yaml" />
 
-  <!-- TF -->
-    <node pkg="tf" type="static_transform_publisher" name="map_world_link_broadcaster" args="0 0 0 0 0 0 map world 100">
-    </node>
-    <node pkg="tf" type="static_transform_publisher" name="base_link_to_laser" args="0.67 0 0 0 0 0 base_link laser 100">
-    </node>
-    <node name="odometry_publisher" pkg="rmml-ugv" type="ros_odometry_publisher.py">
-    </node>
+  <!-- ************** Open the Map server and load pre-constructed greenhouse map ***************  -->
+  <node name="map_server" pkg="map_server" type="map_server" args="$(find rplidar_ros)/maps/greenhouse_karto99_much-fixed.yaml" />
+
+
+  <!-- Publish the transformation between 2D LiDAR and UGV center-->
+  <!-- ***UPDATE THIS LATER*** -->
+  <node pkg="tf" type="static_transform_publisher" name="map_world_link_broadcaster" args="0 0 0 0 0 0 map world 100"/>
+  <node pkg="tf" type="static_transform_publisher" name="base_link_to_laser" args="0.67 0 0 0 0 0 base_link laser 100"/>
+  <node name="odometry_publisher" pkg="rmml-ugv" type="ros_odometry_publisher.py"/>
 
   <!-- ********************* Move_base(1.0) + AMCL ********************* -->
-    <include file= "$(find turtlebot_navigation)/launch/amcl_cyli.launch"/> 
+  <!-- ********************* Navigation Purpose ********************* -->
+  <include file= "$(find turtlebot_navigation)/launch/amcl_cyli.launch"/> 
 
 
-  <!-- ********************* Download ********************* -->
-    <node name="download" pkg="rmml-ugv" type="getV4.py" output="screen" respawn="true">
-    </node>
+  <!-- ********************* Retriving Data From Advantech and Communication with Robot Arm ********************* -->
+  <node name="download" pkg="rmml-ugv" type="getV4.py" output="screen" respawn="true"/>
 
-
-  <!--********************* Upload ********************* -->
-    <node name="upload" pkg="rmml-ugv" type="console_xy_revise0323.py" output="screen">
-    </node>
+  <!--********************* Upload  ********************* -->
+  <node name="upload" pkg="rmml-ugv" type="console_xy_revise0323.py" output="screen"/>
 
   
   <!--********************* check and upload UVG power ********************* -->
-    <!-- <node name="node_checker" pkg="teapicking" type="node_checkerV4.py" output="screen" respawn="true">
-    </node> -->
+  <node name="node_checker" pkg="rmml-ugv" type="node_checkerV4.py" output="screen" respawn="true"/>
   
 
 

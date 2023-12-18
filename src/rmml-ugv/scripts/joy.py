@@ -31,6 +31,8 @@ Test the joystick: sudo jstest /dev/input/js0
 '''
 
 # Global Variables
+
+#Manual => mode = 0, Auto => mode = 4
 mode = 4  # Current operating mode
 lastMode = 0  # Previous operating mode
 
@@ -58,7 +60,7 @@ def mode_callback(msg:Int16):
 
 
 # Callback function for joystick input messages
-def joy_callback(msg: Joy):
+def joy_callback(msg:Joy):
     """
     Callback function for processing joystick input messages.
 
@@ -70,7 +72,7 @@ def joy_callback(msg: Joy):
     Calls other functions based on the detected mode.
     """
     global mode, lastMode
-
+    print(msg)
     # Extract button and axis information
     buttons = msg.buttons
     axes = msg.axes

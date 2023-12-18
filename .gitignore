@@ -3,3 +3,5 @@ build/**
 devel/**
 logs/**
 .vscode/
+ros_bag/**
+**/__pycache__/**

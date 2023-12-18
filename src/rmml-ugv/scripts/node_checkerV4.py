@@ -219,7 +219,8 @@ class App:
         # self.datahub_get_arm_request = datahub_api_send_get(usr_name=hyp['usr_name'],password=hyp['password'],node_id=hyp['node_id'],
         #                     device_id=hyp['device_id'],tag_name="Arm_Requests_B", tag_type=3, array_size=1, mode='ugv_bridge')
         rospy.Subscriber("/amcl_pose", PoseWithCovarianceStamped, self.amcl_pose_callback, queue_size = 1, buff_size = 52428800)                    #current position
-        rospy.Subscriber("/cmd_vel", Twist, self.nav_command, queue_size = 1, buff_size = 52428800)                    
+        # This topic will published by AMCL
+        rospy.Subscriber("/cmd_vel", Twist, self.nav_command, queue_size = 1, buff_size = 52428800)       
         rospy.Subscriber("/move_base_simple/goal", PoseStamped, self.CheckGoal, queue_size = 1, buff_size = 52428800)                     #current goal
 
 
@@ -345,16 +346,25 @@ class App:
         return status
 
     def nav_command(self, msg:Twist):
+        '''
+        Get the current command(rot,velocity) from AMCL (navigation module)
+        '''
         global rot, move
         rot = msg.angular.z
         move = msg.linear.x
             
     def amcl_pose_callback(self, msg:PoseWithCovarianceStamped):
+        '''
+        Get the current position(xy) from AMCL (navigation module)
+        '''
         global current_xy
         current_xy = (msg.pose.pose.position.x,msg.pose.pose.position.y)
 
 
     def CheckGoal(self, msg:PoseStamped):
+        '''
+        Verify whether the UGV is moving to the requested pose
+        '''
         global goal_flag
         self.datahub.send_single([0],device_id=self.hyp['device_id']['ugv_bridge'],tag_name='UGV_Reach_Target_Position_B')
         current_goal = Marker_addr[advantech_utils.markerID_get.read_last_data(0)][:2]
