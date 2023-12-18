@@ -41,10 +41,12 @@ from threading import Thread
 
 #########################################################################
 
+REMOTE_CONTROL_MODE = 0
+AUTONOMOUS_CONTROL_MODE = 4
 
 ip = '192.168.0.4' #
 port = 80
-mode = 4
+mode = REMOTE_CONTROL_MODE
 
 remoteVelocity = 0
 remoteOmega = 0
@@ -67,28 +69,22 @@ def slip_callback(msg:String):
 def mode_callback(msg:Int16):
     global mode
     if msg.data != mode:
+        rospy.loginfo("Mode Changed from %s to %s.", 
+                      ("REMOTE_CONTROL_MODE" if mode == REMOTE_CONTROL_MODE else "AUTONOMOUS_CONTROL_MODE" ),
+                      ("REMOTE_CONTROL_MODE" if msg.data == REMOTE_CONTROL_MODE else "AUTONOMOUS_CONTROL_MODE" ))
         mode = msg.data
-    print("mode", mode)
-        
-def crossTeaTreeTurn_callback(msg:String):
-    '''
-    Mode 8/9/12 are not used for our project.
-    '''
-    global controlCommand
-    v = float(msg.data.split('*')[0])
-    w = float(msg.data.split('*')[1])
-    if mode == 8 or mode == 9 or mode == 13:
-        controlCommand = "%02d*%03d*%05.2f*%05.2f*%04d*%04d*%d*%05.2f*%05.2f*%06.3f*%06.3f" % (0, 0, 0, 0, 0, 0, 4, v, w, 0, 0)
 
+        
 def veloctiyControl_callback(msg:String):
     '''
     Receive the message sent from joy.py, the acc loop will handle the remoteVelocity and remoteOmega
     '''
     global controlCommand, recordState, recordProcessID, remoteVelocity, remoteOmega, remoteState
-    print(msg)
     remoteVelocity = float(msg.data.split('*')[0])
     remoteOmega = float(msg.data.split('*')[1])
     remoteState = msg.data.split('*')[2]
+
+
     # if(recordState == 1):
     #     recordState = 2
     #     recordProcessID = subprocess.Popen('rosbag record /command/velocity -O turnCommandRecord.bag', shell=True)
@@ -133,7 +129,6 @@ def recordState_callback(msg:String):
             print("stop play")
             recordState = 0
     
-
 ##Side By Side
 def position_callback(msg:String):
     global controlCommand   
@@ -151,10 +146,10 @@ def main():
    ticks = 0
    lastCommand = ""
    try:
-       while not rospy.is_shutdown():
+        client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        while not rospy.is_shutdown():
            #print(controlCommand)
-           client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-           client.connect((ip, port))
+           client.connect((ip, port)) 
            client.send(("GET /paramC01="+controlCommand+" HTTP/1.1\r\n\r\n\r\n\r\n").encode('utf-8'))
            recv_data = client.recv(70)
            data_temp = recv_data.split(',')
@@ -211,7 +206,9 @@ def acc():
                     else: w -= accW * dt
             if mode == 0 or mode == 2:
                 controlCommand = "%02d*%03d*%05.2f*%05.2f*%04d*%04d*%d*%05.2f*%05.2f*%06.3f*%06.3f" % (0, 0, 0, 0, 0, 0, 4, v, w, 0, 0)
- #               controlCommand = "%02d*%03d*%05.2f*%05.2f*%04d*%04d*%d*%05.2f*%05.2f*%06.3f*%06.3f" % (0, 0, 0, 0, 0, 0, 4, v, w, 0, 0)
+                rospy.loginfo("[Target/Command] Velocity =[%s, %2.2f] ,Angular =[%2.3f, %2.3f] ,remoteState=%s.",
+                              remoteVelocity,v, remoteOmega,w,remoteState)
+
             rate.sleep()
     finally:
         rospy.loginfo("Exit acc() Thread")
@@ -233,7 +230,7 @@ if __name__ == '__main__':
 
     t1 = Thread(target=main)
     t2 = Thread(target=acc)
-    t1.start()
+    # t1.start()
     t2.start()
     rospy.loginfo("Connection Eastblished with UGV Driver.")
     rospy.spin()

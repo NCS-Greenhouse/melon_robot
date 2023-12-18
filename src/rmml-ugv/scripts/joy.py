@@ -1,6 +1,8 @@
 #! /usr/bin/env python
 
 #
+# sudo jstest /dev/input/js0 
+#
 # Transplanted on Thu Dec 14 2023
 #
 # Copyright (c) 2023 NCS-Greenhouse-Group
@@ -36,8 +38,8 @@ Test the joystick: sudo jstest /dev/input/js0
 mode = 4  # Current operating mode
 lastMode = 0  # Previous operating mode
 
-CarVelocityMax = 0.4  # Maximum linear velocity of the car
-CarAngularVelocityMax = 0.6  # Maximum angular velocity of the car
+CAR_VELOCITY_MAX = 0.4  # Maximum linear velocity of the car
+CAR_ANGULAR_VELOCITY_MAX = 0.6  # Maximum angular velocity of the car
 
 moving_direction = ''  # Current direction of movement
 forward_v = 0.0  # Linear velocity of the car
@@ -72,16 +74,21 @@ def joy_callback(msg:Joy):
     Calls other functions based on the detected mode.
     """
     global mode, lastMode
-    print(msg)
     # Extract button and axis information
     buttons = msg.buttons
     axes = msg.axes
-
+    # print("buttons" , buttons)
+    # print("axes",axes)
     # Button mappings
     a, b, x, y = buttons[:4]
     LB, RB, back, start, logitech, LS, RS = buttons[4:11]
-    leftStickUD, LT, rightStickUD, RT, crossKeyLR, crossKeyUD = axes[1:7]
-
+    leftStickUD = axes[1]
+    LT = axes[2]
+    rightStickUD = axes[4]
+    RT = axes[5]
+    crossKeyLR = axes[6]
+    crossKeyUD = axes[7]
+    
     # Perform actions based on button presses and update the operating mode
     if LB == 1 and RB == 1 and LT == -1 and RT == -1:  # Press back to shutdown
         p = os.popen('shutdown now')
@@ -92,16 +99,16 @@ def joy_callback(msg:Joy):
             pubVelocity.publish('0*0*forward')
         else:
             mode = 4
-    elif a == 1:
-        mode = 1  # Side-by-side
-    elif y == 1:
-        mode = 2  # Play Turn Command Record
-    elif b == 1:
-        mode = 13  # Read Cross-Tea-Tree-Turn parameter then run
-    elif LS == 1:
-        mode = 9  # Cross Tea Tree Turn step by step
-    elif RS == 1:
-        mode = 8  # Modify Cross Tea Tree Turning Parameter
+    # elif a == 1:
+    #     mode = 1  # Side-by-side
+    # elif y == 1:
+    #     mode = 2  # Play Turn Command Record
+    # elif b == 1:
+    #     mode = 13  # Read Cross-Tea-Tree-Turn parameter then run
+    # elif LS == 1:
+    #     mode = 9  # Cross Tea Tree Turn step by step
+    # elif RS == 1:
+    #     mode = 8  # Modify Cross Tea Tree Turning Parameter
 
     # Update lastMode and publish the current mode
     lastMode = mode
@@ -111,11 +118,11 @@ def joy_callback(msg:Joy):
     if mode == 0:
         cross_key_control([LB, RB, back, start, crossKeyUD, crossKeyLR, LT, RT])
         pubFlag.publish(logitech)
-    elif mode == 2:
-        if start == 1:
-            pubRecord.publish("0*0*1*0")
-        if back == 1:
-            pubRecord.publish("0*0*0*1")
+    # elif mode == 2:
+    #     if start == 1:
+    #         pubRecord.publish("0*0*1*0")
+    #     if back == 1:
+    #         pubRecord.publish("0*0*0*1")
     elif mode == 4:
         pubStraightLine.publish("%d %d %d %d" % (int(crossKeyUD), int(start), int(back), int(logitech)))
 
@@ -134,7 +141,6 @@ def cross_key_control(btn):
     global moving_direction, forward_v, angular_w
 
     LB, RB, back, start, UD, LR, LT, RT = btn
-
     # Handle different button presses to control the car
     if LB == 1 and RB == 1:
         moving_direction = 'brake'
@@ -150,13 +156,13 @@ def cross_key_control(btn):
         forward_v = 0.0
         angular_w = 0.0
 
-    v_step = CarVelocityMax / 5
-    w_constant = 0.1 + (CarAngularVelocityMax) * abs(forward_v / CarVelocityMax)
+    v_step = CAR_VELOCITY_MAX / 5
+    w_constant = 0.1 + (CAR_ANGULAR_VELOCITY_MAX) * abs(forward_v / CAR_VELOCITY_MAX)
 
     # Adjust linear velocity based on button inputs
-    if moving_direction == 'forward' and (forward_v + UD * v_step) >= 0 and (forward_v + UD * v_step) <= CarVelocityMax:
+    if moving_direction == 'forward' and (forward_v + UD * v_step) >= 0 and (forward_v + UD * v_step) <= CAR_VELOCITY_MAX:
         forward_v = round((forward_v + UD * v_step), 3)
-    elif moving_direction == 'backward' and (forward_v + UD * v_step) >= -CarVelocityMax and forward_v + UD * v_step <= 0:
+    elif moving_direction == 'backward' and (forward_v + UD * v_step) >= -CAR_VELOCITY_MAX and forward_v + UD * v_step <= 0:
         forward_v = round((forward_v + UD * v_step), 3)
 
     # Adjust angular velocity based on left/right button inputs
@@ -197,7 +203,7 @@ if __name__ == '__main__':
     pub_mode = rospy.Publisher('mode', Int16, queue_size=1)
 
     rospy.Subscriber("joy", Joy, joy_callback, queue_size=1, buff_size=52428800)
-    rospy.Subscriber("mode", Int16, mode_callback, queue_size=1, buff_size=52428800)
+    # rospy.Subscriber("mode", Int16, mode_callback, queue_size=1, buff_size=52428800)
 
     # Enter the ROS event loop
     rospy.spin()
