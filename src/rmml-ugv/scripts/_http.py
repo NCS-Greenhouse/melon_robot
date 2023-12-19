@@ -45,6 +45,7 @@ REMOTE_CONTROL_MODE = 0
 AUTONOMOUS_CONTROL_MODE = 4
 
 ip = '192.168.0.4' #
+# ip = '169.254.239.94'
 port = 80
 mode = REMOTE_CONTROL_MODE
 
@@ -146,31 +147,33 @@ def main():
    ticks = 0
    lastCommand = ""
    try:
-        client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         while not rospy.is_shutdown():
-           #print(controlCommand)
-           client.connect((ip, port)) 
-           client.send(("GET /paramC01="+controlCommand+" HTTP/1.1\r\n\r\n\r\n\r\n").encode('utf-8'))
-           recv_data = client.recv(70)
-           data_temp = recv_data.split(',')
-           #print(data_temp)
-           # if the car is not heavy enough, the following lines is not need
-           '''
-           if(int(data_temp[1])<=3000 and int(data_temp[1])>=-3000):
-               temp1 = '000000'
-           else:
-               temp1 = data_temp[1]
+            #print(controlCommand)
+            print(ip, port)
+            client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            client.connect((ip, port)) 
+            client.send(("GET /paramC01="+controlCommand+" HTTP/1.1\r\n\r\n\r\n\r\n").encode('utf-8'))
+            recv_data = client.recv(70)
+            rospy.logdebug(recv_data)
+            data_temp = recv_data.split(',')
+            #print(data_temp)
+            # if the car is not heavy enough, the following lines is not need
+            '''
+            if(int(data_temp[1])<=3000 and int(data_temp[1])>=-3000):
+                temp1 = '000000'
+            else:
+                temp1 = data_temp[1]
 
-           if(int(data_temp[3])<=3000 and int(data_temp[3])>=-3000):
-               temp3 = '000000'
-           else:
-               temp3 = data_temp[3]
-           data_send = data_temp[0]+','+temp1+','+data_temp[2]+','+temp3
-           '''
-           data_send = data_temp[0]+','+data_temp[1]+','+data_temp[2]+','+data_temp[3]
-           pubRPM.publish(data_send)
-           client.close()
-           rate.sleep()
+            if(int(data_temp[3])<=3000 and int(data_temp[3])>=-3000):
+                temp3 = '000000'
+            else:
+                temp3 = data_temp[3]
+            data_send = data_temp[0]+','+temp1+','+data_temp[2]+','+temp3
+            '''
+            data_send = data_temp[0]+','+data_temp[1]+','+data_temp[2]+','+data_temp[3]
+            pubRPM.publish(data_send)
+            client.close()
+            rate.sleep()
    finally:
        rospy.loginfo("Exit Main Thread")
 
@@ -214,7 +217,7 @@ def acc():
         rospy.loginfo("Exit acc() Thread")
 
 if __name__ == '__main__':
-    rospy.init_node('http')
+    rospy.init_node('http',log_level=rospy.DEBUG)
     pubRPM = rospy.Publisher('feedback/RPM', String, queue_size=1)
     rospy.Subscriber("/mode", Int16, mode_callback, queue_size = 1, buff_size = 52428800)
     rospy.Subscriber("/position", String, position_callback, queue_size = 1, buff_size = 52428800)
@@ -230,7 +233,7 @@ if __name__ == '__main__':
 
     t1 = Thread(target=main)
     t2 = Thread(target=acc)
-    # t1.start()
+    t1.start()
     t2.start()
     rospy.loginfo("Connection Eastblished with UGV Driver.")
     rospy.spin()
