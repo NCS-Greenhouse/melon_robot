@@ -3,3 +3,5 @@ build/**
 devel/**
 logs/**
 .vscode/
+greenhouse_db/**
+**__pycache__**

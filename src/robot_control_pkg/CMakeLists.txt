@@ -208,6 +208,8 @@ catkin_install_python(PROGRAMS
   scripts/tm_controller.py
   scripts/node_viewer.py
   scripts/predict_ros_service.py
+  scripts/utils.py
+  scripts/utils/advantech_utils.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 

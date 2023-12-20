@@ -258,8 +258,9 @@ class datahub_send_data():
 
 class Marker_server():
     def __init__(self) -> None:
-        rospy.init_node("marker_scheduling_node")
-        self.root_path = '/mnt/Data/greenhouse_db/'
+        rospy.init_node("marker_scheduling_node",anonymous=False)
+        # self.root_path = '/mnt/Data/greenhouse_db/'
+        self.root_path = './greenhouse_db/'
         self.curr_day_str = str(datetime.now().year) + "_" + str(datetime.now().month) + "_" + str(datetime.now().day)
         self.current_data_folder = self.root_path + self.curr_day_str
         self.data_path = self.current_data_folder + "/table_db_" + self.curr_day_str +".csv"
@@ -482,7 +483,7 @@ if __name__ == '__main__':
     # MS.delete_dataset()
     rospy.loginfo("Waiting for Service /execute_tm_js")
     exe_tm_js = rospy.ServiceProxy("/execute_tm_js",execute_tm_js)
-    exe_tm_js.wait_for_service()
+    # exe_tm_js.wait_for_service()
 
     rospy.loginfo("Waiting for Service /tm_driver")
     tm_write_item = rospy.ServiceProxy("/tm_driver/write_item",WriteItem)
