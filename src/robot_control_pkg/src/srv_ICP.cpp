@@ -455,16 +455,32 @@ int main (int argc, char* argv[]){
     // viewer->createViewPort (0.0, 0.0, 0.5 ,1.0, v3); // Cloud current dynamic cross-compare info
     // viewer->createViewPort (0.5, 0.0, 1.0, 1.0, v4); // output cloud
 
-    ros::init(argc, argv, "execute_ICP",ros::init_options::AnonymousName);
+    ros::init(argc, argv, "execute_ICP");
     ros::NodeHandle nh;
     // ros::ServiceClient exeICP_srv = nh.serviceClient<robot_control_pkg::execute_ICP>("execute_ICP");
-    ros::ServiceServer exeICP_srv = nh.advertiseService("execute_ICP",execute_ICP_srv_function_gpu);
-    // ros::ServiceServer exeICP_srv = nh.advertiseService("execute_ICP",execute_ICP_srv_function_cpu);
-    icp_cuda_srv = nh.serviceClient<robot_control_pkg::execute_icp_cuda>("execute_icp_cuda");
-    // ROS_INFO("Waiting For Cuda ICP Wrapper...");
-    // if(icp_cuda_srv.waitForExistence()){
-    //     // ROS_INFO("Cuda ICP exists.");
-    // }
+
+    //Detect the mode here
+    int gpu_numbers;
+    ros::param::get("/gpu_number",gpu_numbers);
+    ROS_INFO_STREAM("GPU Number(s)=" + std::to_string(gpu_numbers));
+    ros::ServiceServer exeICP_srv;
+
+    if(gpu_numbers == 0){
+        ROS_INFO("Initializing PCL ICP Based on CPU...");
+        exeICP_srv = nh.advertiseService("execute_ICP",execute_ICP_srv_function_cpu);
+        icp_cuda_srv = nh.serviceClient<robot_control_pkg::execute_ICP>("execute_ICP");
+        if(icp_cuda_srv.waitForExistence()){
+            ROS_INFO("CPU ICP is already set Up.");
+        }
+    }
+    else if(gpu_numbers >= 1){
+        exeICP_srv = nh.advertiseService("execute_ICP",execute_ICP_srv_function_gpu);
+        icp_cuda_srv = nh.serviceClient<robot_control_pkg::execute_icp_cuda>("execute_icp_cuda");
+        ROS_INFO("Waiting For Cuda ICP Wrapper...");
+        if(icp_cuda_srv.waitForExistence()){
+            ROS_INFO("Cuda ICP exists.");
+        }
+    }
     ros::Rate rate(5);
     while(!ros::isShuttingDown()){
         ros::spinOnce();
