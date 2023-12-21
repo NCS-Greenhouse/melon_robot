@@ -9,6 +9,7 @@
 #
 
 import cv2
+print(cv2.__version__)
 from rosdep2 import RosdepDatabase
 from sensor_msgs.msg import Image, PointCloud2
 from geometry_msgs.msg import PoseArray, Pose
@@ -26,19 +27,13 @@ sys.path.insert(0,rospkg.RosPack().get_path('hrl_geom') + "/src/hrl_geom/")
 from urdf_parser_py.urdf import URDF
 from pykdl_utils.kdl_kinematics import KDLKinematics
 from scipy.spatial.transform import Rotation as R
-
-
 from queue import Queue
 
-class Image_Cvt:
+sys.path.insert(0,rospkg.RosPack().get_path('robot_control_pkg') + "/scripts/utils")
+import _aruco_boards
+
+class ArUcoMarker_Handler:
     def __init__(self):
-        # self.TM_DESCRIPTION_PKG_PATH = rospkg.RosPack().get_path('tm_description')
-        # self.urdf_path = self.TM_DESCRIPTION_PKG_PATH + "/urdf/tm5-900.urdf"
-        # self.urdf_path = "/home/robot/catkin_pcl_rt/src/mycobot_ros/mycobot_description/urdf/mycobot/mycobot_LGR.urdf"
-        # self.robot_urdf = URDF.from_xml_file(self.urdf_path)
-        # self.kdl_kin = KDLKinematics(self.robot_urdf, "world", "global_camera")
-        # self.cam_wrt_world = self.kdl_kin.forward([])
-        # self.world_wrt_cam = np.linalg.inv(self.kdl_kin.forward([]))
         self.simulation = False
         self.camera_type = "color" #color
         self.aruco_type = "planner" #or planner
@@ -46,23 +41,17 @@ class Image_Cvt:
         self.draw_axis = True
         self.init_node = rospy.init_node('Aruco_Detector')
         self.image_queue_color = Queue(maxsize=100)
-        # rospy.Subscriber('/camera/depth/color/points', PointCloud2, self.pointcloud_callback, queue_size=1)
-        # rospy.Subscriber('/camera/depth_registered/points', PointCloud2, self.pointcloud_callback, queue_size=1)
 
         if(self.camera_type == "color"):
-            self.color_sub = rospy.Subscriber('/camera/color/image_raw', Image, self.color_callback, queue_size=1)
+        #     self.color_sub = rospy.Subscriber('/camera/color/image_raw', Image, self.color_callback, queue_size=1)
             self.frame_id = "camera_color_optical_frame"
         elif(self.camera_type == "infra1"):
-            self.color_sub = rospy.Subscriber('/camera/infra1/image_rect_raw', Image, self.infra_callback, queue_size=1)
+        #     self.color_sub = rospy.Subscriber('/camera/infra1/image_rect_raw', Image, self.infra_callback, queue_size=1)
             self.frame_id = "camera_infra1_optical_frame"
-        # self.gravity_sub = rospy.Subscriber('/realsense_gravity',PointStamped,self.gravity_callback,queue_size=1)
-        
-        self.global_camera_sub = rospy.Subscriber("/camera_global", Image,callback=self.global_image_callback,queue_size=1)
-        self.global_aruco_parameter = cv2.aruco.DetectorParameters()
-
-        # self.aruco_dict = cv2.aruco.Dictionary_get(cv2.aruco.DICT_5X5_250)
-        self.aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_5X5_250)
-        # self.parameters = cv2.aruco.DetectorParameters_create()
+        # 
+        # self.aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_5X5_250)
+        self.aruco_dict = _aruco_boards.get_dict()
+        self.boards = _aruco_boards.get_boards()
         self.parameters = cv2.aruco.DetectorParameters()
         
 
@@ -71,58 +60,22 @@ class Image_Cvt:
         # objPoints[i][1] - right-top point of i-th marker
         # objPoints[i][2] - right-bottom point of i-th marker
         # objPoints[i][3] - left-bottom point of i-th marker
-        self.board_corners_C11 = [np.array([[-0.06,0.025,0],[-0.01,0.025,0],[-0.01,-0.025,0],[-0.06,-0.025,0]],dtype=np.float32),
-                                np.array([[0.01,0.025,0],[0.06,0.025,0],[0.06,-0.025,0],[0.01,-0.025,0]],dtype=np.float32),]
-        self.board_corners_C12 = [np.array([[-0.06,0.025,0],[-0.01,0.025,0],[-0.01,-0.025,0],[-0.06,-0.025,0]],dtype=np.float32),
-                                        np.array([[0.01,0.025,0],[0.06,0.025,0],[0.06,-0.025,0],[0.01,-0.025,0]],dtype=np.float32),]
 
-        self.board_corners_C13 = [np.array([[-0.06,0.025,0],[-0.01,0.025,0],[-0.01,-0.025,0],[-0.06,-0.025,0]],dtype=np.float32),
-                                        np.array([[0.01,0.025,0],[0.06,0.025,0],[0.06,-0.025,0],[0.01,-0.025,0]],dtype=np.float32),]
-        
-        self.board_ids_C11 = np.array([[21],[22]], dtype = np.int32)
-        self.board_ids_C12 = np.array([[23],[24]], dtype = np.int32)
-        self.board_ids_C13 = np.array([[25],[26]], dtype = np.int32)
-
-        self.board_C11 = cv2.aruco.Board(self.board_corners_C11, self.aruco_dict, self.board_ids_C11)
-        self.board_C12 = cv2.aruco.Board(self.board_corners_C12, self.aruco_dict, self.board_ids_C12)
-        self.board_C13 = cv2.aruco.Board(self.board_corners_C13, self.aruco_dict, self.board_ids_C13)
-        
-        self.boards = []
-        self.board_ids = []
-        self.board_corners = []
-
-        self.boards.append(self.board_C11)
-        self.boards.append(self.board_C12)
-        self.boards.append(self.board_C13)
-        self.board_ids.append(self.board_ids_C11)
-        self.board_ids.append(self.board_ids_C12)
-        self.board_ids.append(self.board_ids_C13)
-        self.board_corners.append(self.board_corners_C11)
-        self.board_corners.append(self.board_corners_C12)
-        self.board_corners.append(self.board_corners_C13)
-
-        
-        self.mtx_realsense, self.dist_realsense = self.get_camera_param(1280,720,camera="color")
-        # self.mtx_realsense, self.dist_realsense = self.get_camera_param(640,480,camera="color")
+        self.mtx_realsense, self.dist_realsense = self.get_camera_param(640,480,camera="color")
         self.aruco_dist = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_5X5_100)
-        self.aruco_dist_77_100 = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_7X7_100)
-        self.aruco_dict_global = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_7X7_100)
         self.aruco_parameters = cv2.aruco.DetectorParameters()
 
         self.aruco_pose_arr_pub = rospy.Publisher('/aruco_pose_array_stamped', Aruco_PoseArray_ID,queue_size=5)
         self.pose_formated_publisher = rospy.Publisher('/aruco_pose_str_stamped',String,queue_size = 10) 
         self.pointcloud_publisher = rospy.Publisher('/aruco_triggered_pointcloud',PointCloud2,queue_size = 10) 
         
-
-
-
         self.bool_publisher = rospy.Publisher('/Is_Detected_Aruco', Bool, queue_size=10)
         self.pose_publisher = rospy.Publisher('/Aruco_Pose',PoseArray,queue_size = 10)
         self.pose_array_publisher = rospy.Publisher('/Aruco_Index',Int16MultiArray,queue_size=10)
         self.global_marker_pub = rospy.Publisher('/Marker_in_Global_Cam',Aruco_PoseArray_ID,queue_size=10)
         self.aruco_gravity_piblisher = rospy.Publisher('/Aruco_Triggered_Gravity',PointStamped,queue_size=10)
         self.aruco_detection_image_publisher = rospy.Publisher('/aruco_result_img', Image, queue_size=1)
-        # self.aruco_pointcloud_piblisher = rospy.Publisher('/Aruco_Triggered_PointCloud',PointCloud2,queue_size=10)
+
         self.cv_bridge = CvBridge()
         self.trans_gravity_camera = np.identity(4)
         self.trans_gravity_camera[0,0] = -1
@@ -194,20 +147,23 @@ class Image_Cvt:
     
     def get_detected_cube(self,ids):
         board_list_indecies = []
-        for i in range(len(self.board_ids)):
-            board_id = self.board_ids[i]
+        for i in range(len(self.boards)):
+            board_id = self.boards[i].getIds()
             if(np.any(ids == board_id[0]) or np.any(ids == board_id[1])):
                 board_list_indecies.append(i)
         return board_list_indecies
-        
-    def get_aruco_pose(self,data:Image):
+
+    def get_aruco_pose(self):
         # data = self.image_queue_color.get() #get data(raw)
+        data:Image = rospy.wait_for_message('/camera/color/image_raw', Image,timeout=1.0)
         self.current_stamp = data.header.stamp
         color_image = self.cv_bridge.imgmsg_to_cv2(data,desired_encoding="passthrough") #trahsform raw data to cv recognizable data
         if(self.camera_type == "color"):
             cv2.cvtColor(color_image, cv2.COLOR_BGR2RGB,color_image)
         gray = self.cv_bridge.imgmsg_to_cv2(data,desired_encoding="passthrough") #trahsform raw data to cv recognizable data
-        corners, ids, rejectedImgPoints = cv2.aruco.detectMarkers(gray,self.aruco_dist,parameters=self.global_aruco_parameter) #get marker
+        corners, ids, rejectedImgPoints = cv2.aruco.detectMarkers(gray,self.aruco_dict,parameters=self.aruco_parameters) #get marker
+
+
         #defien homo transformation matrix
         transformation = np.zeros((4,4))
         transformation[3,3] = 1
@@ -224,11 +180,9 @@ class Image_Cvt:
         pose_array_base.header.stamp = rospy.Time.now()
         rvec = None
         tvec = None
-        print(ids)
-        
 
         if ids is not None:
-            self.tool_pose = rospy.wait_for_message("tool_pose", PoseStamped) #Get TM Robot TCP Pose
+            self.tool_pose:PoseStamped = rospy.wait_for_message("tool_pose", PoseStamped,timeout=1) #Get TM Robot TCP Pose
             T_base_ee = tf.transformations.quaternion_matrix(np.array([self.tool_pose.pose.orientation.x,
                 self.tool_pose.pose.orientation.y,
                 self.tool_pose.pose.orientation.z,
@@ -240,7 +194,6 @@ class Image_Cvt:
             T_base_camera = np.matmul(T_base_ee, self.T_flange_camera)
 
             #Transfrom Flange to Realsense Frame
-            # print(self.tool_pose)
             is_detected.data = True
             board_list_indecies = self.get_detected_cube(ids)
             rospy.loginfo("Index = %s",str(board_list_indecies))
@@ -285,51 +238,12 @@ class Image_Cvt:
         custon_aruco_array_with_id.Aruco_PoseArray = pose_array
         custon_aruco_array_with_id.Aruco_Pose_on_Base = pose_array_base
         self.aruco_pose_arr_pub.publish(custon_aruco_array_with_id)
-        # img = self.cv_bridge.cv2_to_imgmsg(gray,encoding="bgr8")
-        # self.aruco_detection_image_publisher.publish(img)
         cv2.imshow("frame",gray)
         cv2.waitKey(1)
-        
-    def global_image_callback(self,data):
-        # @aborted 
-        img_cv = self.cv_bridge.imgmsg_to_cv2(data)
-        gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY)
-        corners, ids, rejectedImgPoints = cv2.aruco.detectMarkers(gray,self.aruco_dict_global,parameters=self.aruco_parameters) #get marker
-        customed_aruco_poses_with_id = Aruco_PoseArray_ID()
-        pose_arr = PoseArray()
-        pose_arr.header.frame_id = "world"
-        pose_arr.header.stamp = rospy.Time().now()
+    
+AMH = ArUcoMarker_Handler()
 
-        transformation = np.zeros((4,4))
-        transformation[3,3] = 1
+while(not rospy.is_shutdown()):
+    AMH.get_aruco_pose()
 
-        if ids is not None:
-            for id in range(len(ids)):
-                pose = Pose()
-                rvec, tvec, _ = cv2.aruco.estimatePoseSingleMarkers(corners[id],d,self.global_cam_intrinsic[0],self.global_cam_intrinsic[1]) # Esrunare Pose 0.02 = marker length / unit meter(M)
-                point = np.append(tvec[0][0],1.0)
-                point_world = point
-                Rotation_matrix, jacobian = cv2.Rodrigues(rvec)
-                transformation[0:3,0:3] = Rotation_matrix
-                transformation[0:3,3] = tvec[:,0]
-                T_w_a = self.cam_wrt_world * transformation #corrent
-
-                # Quaternions ix+jy+kz+w are represented as [x, y, z, w].
-                quaternion = tf.transformations.quaternion_from_matrix(T_w_a) #transform rotation matrix(4*4) into quaternion 
-                pose.orientation.x = quaternion[0]
-                pose.orientation.y = quaternion[1]
-                pose.orientation.z = quaternion[2]
-                pose.orientation.w = quaternion[3]
-
-                pose.position.x = T_w_a[0,3]
-                pose.position.y = T_w_a[1,3]
-                pose.position.z = T_w_a[2,3]
-
-                pose_arr.poses.append(pose)
-                customed_aruco_poses_with_id.Aruco_ID.append(int(ids[id]))
-                #converting to robot base frame
-        customed_aruco_poses_with_id.Aruco_PoseArray = pose_arr
-        self.global_marker_pub.publish(customed_aruco_poses_with_id)
-
-IC = Image_Cvt()
 rospy.spin()
