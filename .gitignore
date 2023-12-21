@@ -5,3 +5,4 @@ logs/**
 .vscode/
 greenhouse_db/**
 **__pycache__**
+aruco_boards/**
