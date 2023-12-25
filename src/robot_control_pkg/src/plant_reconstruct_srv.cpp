@@ -129,7 +129,7 @@ ros::ServiceClient plant_phonotype_sender;
 ros::ServiceClient image_uploader;
 
 ros::Publisher program_status_pub;
-ros::Publisher image_chech_point_pub;
+ros::Publisher image_check_point_pub;
 ros::Publisher plant_height_pub;
 ros::Publisher icped_cloud_pub;
 ros::Publisher FSM_data_pub;
@@ -1070,7 +1070,6 @@ bool plant_scanning_service(robot_control_pkg::plant_reconstruct::Request &reque
         fsm_srv.request.status = fsm_srv.request.GOTO_STANDBY_POSE;
         fsm_srv.request.header.stamp = ros::Time::now();
         update_FSM_srv.call(fsm_srv.request,fsm_srv.response);
-        
 
 
         execute_tm_js_service.call(eTMjs.request,eTMjs.response); // Move to Standby Pose
@@ -1082,7 +1081,7 @@ bool plant_scanning_service(robot_control_pkg::plant_reconstruct::Request &reque
         status.header.stamp = ros::Time::now();
         status.item.data = "[Done] Go to Initial Viewpoint";
         program_status_pub.publish(status);
-        image_chech_point_pub.publish(ros::topic::waitForMessage<sensor_msgs::Image>("/camera/color/image_raw",ros::Duration(0.5)));
+        image_check_point_pub.publish(ros::topic::waitForMessage<sensor_msgs::Image>("/camera/color/image_raw",ros::Duration(0.5)));
         
         fsm_srv.request.status = fsm_srv.request.ARUCO_MARKER_NOT_FOUND;
         fsm_srv.request.header.stamp = ros::Time::now();
@@ -1102,6 +1101,7 @@ bool plant_scanning_service(robot_control_pkg::plant_reconstruct::Request &reque
                 if(pose->Aruco_PoseArray.poses.size() >0){
                     
                     int marker_index = -1;
+                    // Find whether the a required marker is found
                     for (size_t i = 0; i < pose->Aruco_PoseArray.poses.size(); i++)
                     {
                         if(pose->Aruco_ID[i] == request.marker_id_int.data){
@@ -1122,7 +1122,7 @@ bool plant_scanning_service(robot_control_pkg::plant_reconstruct::Request &reque
                     status.header.stamp = ros::Time::now();
                     status.item.data = "Marker Found";
                     program_status_pub.publish(status);
-                    image_chech_point_pub.publish(ros::topic::waitForMessage<sensor_msgs::Image>("/camera/color/image_raw"));
+                    image_check_point_pub.publish(ros::topic::waitForMessage<sensor_msgs::Image>("/camera/color/image_raw"));
                     fsm_srv.request.status = fsm_srv.request.ARUCO_MARKER_FOUND;
                     fsm_srv.request.header.stamp = ros::Time::now();
                     update_FSM_srv.call(fsm_srv.request,fsm_srv.response);
@@ -1168,6 +1168,8 @@ bool plant_scanning_service(robot_control_pkg::plant_reconstruct::Request &reque
         }
         else{
             ROS_ERROR("ArUco Not Found.");
+            response.Success.data = -1;
+            return true;
         }
         Eigen::Affine3d T_base_aruco_init = TF_base_tool*TF_tool_camera*TF_Camera_ArUco;
         std::cout << "TF_base_tool = \n" << TF_base_tool.matrix() << std::endl;
@@ -1182,9 +1184,14 @@ bool plant_scanning_service(robot_control_pkg::plant_reconstruct::Request &reque
                                                                 sinf(270/RAD)*0.5,0.5);
         T_vp_aruco = T_base_aruco_init * T_vp_aruco;
         ctmFk.request.fk_link_name = "realsense_fixture";
-
         eigen2pose(T_vp_aruco,ps);
         ps_stamped.pose = ps;
+
+
+        /**
+         * @brief Consider changing this block, from compute-tm-ik to [directly change the pose]
+         * 
+         */
         compute_tm_ik_service.waitForExistence();
         ctmIk.request.ik_link_name = "realsense_fixture";
         ctmIk.request.target_pose = ps_stamped;
@@ -1202,10 +1209,8 @@ bool plant_scanning_service(robot_control_pkg::plant_reconstruct::Request &reque
             std::cout << "Call Service" << std::endl;
             execute_tm_js_service.call(eTMjs.request,eTMjs.response);
 
-
-
             printf("Error Code:%d, Execute Time:%f\n",eTMjs.response.error_code,eTMjs.response.executing_time);
-            image_chech_point_pub.publish(ros::topic::waitForMessage<sensor_msgs::Image>("/camera/color/image_raw"));
+            image_check_point_pub.publish(ros::topic::waitForMessage<sensor_msgs::Image>("/camera/color/image_raw"));
             status.header.stamp = ros::Time::now();
             status.item.data = "[Done] Move to Closer View";
             status.value.data = "Done";
@@ -1285,7 +1290,8 @@ bool plant_scanning_service(robot_control_pkg::plant_reconstruct::Request &reque
         pcl::PointCloud<pcl::PointXYZRGB>::Ptr aruco_cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
         receive_pc(pc_aruco);
         pc2_PCL_Cloud(pc_aruco,aruco_cloud);
-
+        
+        //???? Why I need this line??
         T_base_aruco_init.translation().z() += 0.045;
         T_base_aruco_init.translation().x() += 0.04;
         //2. Transfromation
@@ -1413,7 +1419,7 @@ bool plant_scanning_service(robot_control_pkg::plant_reconstruct::Request &reque
             status.header.stamp = ros::Time::now();
             status.item.data = "Rough Search, Height:" + std::to_string(adjusted_h);
             program_status_pub.publish(status);
-            image_chech_point_pub.publish(ros::topic::waitForMessage<sensor_msgs::Image>("/camera/color/image_raw"));
+            image_check_point_pub.publish(ros::topic::waitForMessage<sensor_msgs::Image>("/camera/color/image_raw"));
 
             //1. Get point cloud
             sensor_msgs::PointCloud2ConstPtr pc2;
@@ -2091,7 +2097,7 @@ int main(int argc, char** argv){
     image_uploader = nh.serviceClient<robot_control_pkg::upload_img>("/upload_img");
 
     program_status_pub = nh.advertise<robot_control_pkg::Job_Status>("system_status",10);
-    image_chech_point_pub = nh.advertise<sensor_msgs::Image>("/image_check_points",1);
+    image_check_point_pub = nh.advertise<sensor_msgs::Image>("/image_check_points",1);
     plant_height_pub = nh.advertise<robot_control_pkg::plant_height_stamped>("/computed_plant_height",1);
     icped_cloud_pub = nh.advertise<sensor_msgs::PointCloud2>("icped_cloud",1);
     FSM_data_pub = nh.advertise<robot_control_pkg::FSM_Msg>("robot_fsm",1);
