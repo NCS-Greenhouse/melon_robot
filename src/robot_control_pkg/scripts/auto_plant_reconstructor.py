@@ -18,7 +18,7 @@ from geometry_msgs.msg import Point
 
 from robot_control_pkg.srv import plant_reconstruct, plant_reconstructRequest, plant_reconstructResponse 
 from robot_control_pkg.srv import execute_tm_js, execute_tm_jsRequest, execute_tm_jsResponse
-from tm_msgs.srv import WriteItem, WriteItemRequest, AskItem, AskItemRequest, AskItemResponse
+from tm_msgs.srv import WriteItem, WriteItemRequest,WriteItemResponse, AskItem, AskItemRequest, AskItemResponse
 from sensor_msgs.msg import JointState
 import configparser, rospkg, csv
 
@@ -196,9 +196,10 @@ class Marker_server():
         if not os.path.exists(folder_name):
             # Create current time folder
             os.makedirs(folder_name)
-            print("Folder " + folder_name + " Created.")
+            rospy.loginfo("Folder " + folder_name + " Created.")
         else:
-            print("Folder " + folder_name + " Already existed.")
+            rospy.logwarn("Folder " + folder_name + " Already existed.")
+            rospy.logwarn("Consider check your procedure  and your files.")
         return folder_root
 
     def check_connection(self)->bool:
@@ -216,6 +217,9 @@ class Marker_server():
             return False
  
 def signal_handler(signum, frame):
+    '''
+    Disconnect with server and exit the main thread
+    '''
     print('signal_handler: caught signal ' + str(signum))
     if signum == signal.SIGINT.value:
         # print('SIGINT')
@@ -225,33 +229,46 @@ def signal_handler(signum, frame):
         datahub_get_ugv_reach.close_connection()
         datahub_get_ugv_marker_id.close_connection()
         sys.exit(1)
-            
+
+def homing_robot_arm()->bool:
+    js_home = JointState()
+    js_home.position = [0,0,0,0,0,0]
+    response:execute_tm_jsResponse = exe_tm_js.call(js_home)
+    rospy.loginfo("The arm is homed.")
+    if(response.error_code==0):
+        True
+    else:
+        rospy.logwarn(f"Error code: {response.error_code}")
+        return False     
+
+def robot_light_control(state:bool)->bool:
+
+    wreq = WriteItemRequest()
+    wreq.id = '0'
+    wreq.item = "Camera_Light"
+    wreq.value = '1' if state==True else '0'
+    response:WriteItemResponse = tm_write_item.call(wreq)
+    if(response.ok == True):
+        return True
+    else:
+        return False 
+    
 if __name__ == '__main__':
-    signal.signal(signal.SIGINT, signal_handler)
+    '''
+    This is the main loop
+    '''
+    signal.signal(signal.SIGINT, signal_handler) #Assign handler function for Ctrl+C 
+
+    # Credentials Verification
     conf = configparser.ConfigParser() 
     rospack = rospkg.RosPack()
     package_root = rospack.get_path("robot_control_pkg") #Get current package absolute location
     conf.read(package_root + "/package.conf") # Try to load this configuration file
     if((conf.get('forge.datahub', 'credential',fallback='err')) == 'err'):
-        # OR not 'forge.mango' in self.conf
         rospy.logerr("credentials error")
         rospy.signal_shutdown("Credentials Loading Fail.")
     else:
         pass
-    #region Initialization of Marker System Class, ROS node and wating for critical services
-    MS = Marker_server()
-    # MS.delete_dataset()
-    rospy.loginfo("Waiting for Service /execute_tm_js")
-    exe_tm_js = rospy.ServiceProxy("/execute_tm_js",execute_tm_js)
-    exe_tm_js.wait_for_service()
-
-    rospy.loginfo("Waiting for Service /tm_driver")
-    tm_write_item = rospy.ServiceProxy("/tm_driver/write_item",WriteItem)
-
-    # WriteItem
-    rospy.loginfo("Waiting for Service /plant_reconstruct_srv")
-    plant_reconstruct_service = rospy.ServiceProxy("/plant_reconstruct_srv",plant_reconstruct)
-    # plant_reconstruct_service.wait_for_service()
     hyp = {
         'node_id': 'b76616d3-8377-404b-a919-3fdc3daced0b',
         'device_id': {
@@ -267,29 +284,44 @@ if __name__ == '__main__':
         'credential_key': conf.get('forge.datahub', 'credential')
     }
     datahub = datahub_send_data(hyp)
+    #region Initialization of Marker System Class, ROS node and wating for critical services
+    MS = Marker_server()
+    # MS.delete_dataset() #Optional run this code to refresh today's work
+
+    exe_tm_js = rospy.ServiceProxy("/execute_tm_js",execute_tm_js)
+    tm_write_item = rospy.ServiceProxy("/tm_driver/write_item",WriteItem)
+    plant_reconstruct_service = rospy.ServiceProxy("/plant_reconstruct_srv",plant_reconstruct)
+
+    # Waiting for service(s)
+    rospy.loginfo("Waiting for Service /execute_tm_js")
+    exe_tm_js.wait_for_service()
+
+    rospy.loginfo("Waiting for Service /tm_driver")
+    tm_write_item.wait_for_service()
+
+    rospy.loginfo("Waiting for Service /plant_reconstruct_srv")
+    plant_reconstruct_service.wait_for_service()
+
+    # Continue until the datahub is connected.
     while(not datahub.check_connection()):
         rospy.loginfo("Connecting To Datahub ...")
         rospy.Rate(2).sleep()
     rospy.loginfo("Connection Status: %s.", datahub.check_connection())
-    #endregion
 
-    
     #Vefrify the Robot is Power ON 
     while(not MS.check_connection()):
-        rospy.logerr("TM5-900 Manipulator is not turned on")
+        rospy.logwarn_throttle(5,"TM5-900 Manipulator is not turned on") #Pop a error message every five seconds
         datahub.send_single([0],device_id=hyp['device_id']['ugv_bridge'],tag_name='Arm_Power_B')
+        rospy.Rate(2).sleep()
         if(rospy.is_shutdown()):
             quit()
     datahub.send_single([1],device_id=hyp['device_id']['ugv_bridge'],tag_name='Arm_Power_B')
     rospy.loginfo("[POWER ON] TM5-900 Manipulator Powered On!")
 
-    #Init parameters: Arm_Requests = 0
-    datahub.send_single([0],device_id=hyp['device_id']['ugv_bridge'],tag_name='Arm_Requests_B')
-
-    #Debug: UGV Power
-    datahub.send_single([1],device_id=hyp['device_id']['ugv_bridge'],tag_name='UGV_Power_B')
+    #Init parameters: 
+    datahub.send_single([0],device_id=hyp['device_id']['ugv_bridge'],tag_name='Arm_Requests_B') # Arm_Requests = 0
+    datahub.send_single([1],device_id=hyp['device_id']['ugv_bridge'],tag_name='UGV_Power_B') # Debug: UGV Power
     
-    rospy.loginfo("Connecting To Datahub (Gets)")
     datahub_get_ugv_power = datahub_api_send_get(usr_name=hyp['usr_name'],password=hyp['password'],node_id=hyp['node_id'],
                                    device_id=hyp['device_id'],tag_name="UGV_Power_B", tag_type=2, array_size=1, mode='ugv_bridge')
     datahub_get_ugv_reach = datahub_api_send_get(usr_name=hyp['usr_name'],password=hyp['password'],node_id=hyp['node_id'],
@@ -297,47 +329,32 @@ if __name__ == '__main__':
     datahub_get_ugv_marker_id = datahub_api_send_get(usr_name=hyp['usr_name'],password=hyp['password'],node_id=hyp['node_id'],
                                    device_id=hyp['device_id'],tag_name="UGV_Target_Marker_ID_B", tag_type=3, array_size=1, mode='ugv_bridge')
        
-    #region Verify whether the UGV is powered on
     while(datahub_get_ugv_power.read_last_data(0) != 1 or datahub_get_ugv_power.read_last_data(0) == None):
-        # print(datahub_get_ugv_power.read_last_data(0))
         rospy.logwarn_throttle(2, "UGV Power is OFF.")
-        rospy.Rate(1).sleep()
+        rospy.Rate(2).sleep()
         if(rospy.is_shutdown()):
             quit()
     
-    rospy.loginfo(f"UGV Power is {'ON.' if datahub_get_ugv_power.read_last_data(0) == 1 else 'OFF.'}")
-    # endregion
+    rospy.loginfo(f"UGV Power is powered {'ON.' if datahub_get_ugv_power.read_last_data(0) == 1 else 'OFF.'}")
 
-    js_home = JointState()
-    js_home.position = [0,0,0,0,0,0]
-    wreq = WriteItemRequest()
-    rospy.loginfo("The arm is homed.")
-    exe_tm_js.call(js_home)
-    wreq.id = '0'
-    wreq.item = "Camera_Light"
-    wreq.value = '0'
-    tm_write_item.call(wreq)
-
-    arm_is_homed = False
+    # Homing the robotic manipulator and turn on operating light
+    homing_robot_arm()
+    robot_light_control(True)
+    
     while(True):
-        #start planning
-        # rospy.loginfo("Start Scheduling.")
+        rospy.loginfo("Start Scheduling.")
         [schedule_result,min_time_lapse] = MS.schedule_marker(False)
         if(schedule_result == -1):
-            # datahub_get_ugv_marker_id
-            # arm homing
+            '''
+            If no pending task to be executed, we home the arm, turn off the light, and print the next task time.
+            '''
             if(arm_is_homed == False):
-                js_home = JointState()
-                js_home.position = [0,0,0,0,0,0]
-                wreq = WriteItemRequest()
-                rospy.loginfo("The arm is homed.")
-                exe_tm_js.call(js_home)
-                wreq.id = '0'
-                wreq.item = "Camera_Light"
-                wreq.value = '0'
-                tm_write_item.call(wreq)
+                '''
+                This block is to home the robot arm when all tasks are executed.
+                '''
+                homing_robot_arm()
+                robot_light_control(True)
                 arm_is_homed = True
-
             td = timedelta(seconds=int(MS.period - min_time_lapse))
             rospy.loginfo("All Scheduled Task Finished. Next Task Timer: %s.", str(td) )
             rospy.Rate(0.2).sleep()
@@ -352,68 +369,70 @@ if __name__ == '__main__':
 
 
         # Restore the arm into safe pose
-        rospy.loginfo("Setting the Target Marker ID")
+        rospy.loginfo(f"Setting the Target Marker ID to {schedule_result}.")
+        rospy.loginfo("Set parameter \"ArmRequest\"on advantech to 1")
         datahub.send_single([str(schedule_result)],device_id=hyp['device_id']['ugv_bridge'],tag_name='UGV_Target_Marker_ID_B')
         rospy.Rate(1).sleep() # delay for robustness for UGV side
         datahub.send_single([1],device_id=hyp['device_id']['ugv_bridge'],tag_name='Arm_Requests_B')
-        rospy.loginfo("ArmRequest = 1")
-        #[DEBUG] manually set the position is reached.
-        datahub.send_single([1],device_id=hyp['device_id']['ugv_bridge'],tag_name='UGV_Reach_Target_Position_B')
+        datahub.send_single([1],device_id=hyp['device_id']['ugv_bridge'],tag_name='UGV_Reach_Target_Position_B') #[DEBUG] manually set the position is reached.
 
-        while(not (datahub_get_ugv_reach.read_last_data(0) == 1  or datahub_get_ugv_power.read_last_data(0) == None)):
+        while(not (datahub_get_ugv_reach.read_last_data(0) == 1)):
             # Debug
             rospy.logwarn_throttle(2,"UGV is not reached the target positon (Marker: %s)(Flag = %s).", str(schedule_result), str(datahub_get_ugv_reach.read_last_data(0)))
             rospy.Rate(1).sleep()
             if(rospy.is_shutdown()):
                 quit()
 
-        #Sleep
-        rospy.Rate(0.5).sleep()
-        rospy.loginfo("Sleep 2 Secs")
-        
+        # Send Request and Reach Target to Zero (prepare for next moving)
         datahub.send_single([0],device_id=hyp['device_id']['ugv_bridge'],tag_name='Arm_Requests_B')
-        datahub.send_single([0],device_id=hyp['device_id']['ugv_bridge'],tag_name='UGV_Reach_Target_Position_B')
-        
-        #If the UGV reached the target position, we change the flag "Arm_Requests" to 0. 
+        datahub.send_single([0],device_id=hyp['device_id']['ugv_bridge'],tag_name='UGV_Reach_Target_Position_B')        
         rospy.loginfo("[UGV] Target Position  (Marker: %s) Reached,", str(schedule_result))
-        datahub.send_single([0],device_id=hyp['device_id']['ugv_bridge'],tag_name='Arm_Requests_B')
-        failure_cases = []
+
+        failure_cases = [] #define a list storing the failure cases for rolling back 
         for marker in MS.marker[schedule_result]:
-            marker_offset = MS.marker[schedule_result][marker]
+            marker_offset:Point = MS.marker[schedule_result][marker]
             [plant_col, plant_next_index, _] = MS.scheduling(schedule_result,False)
             print(plant_col, plant_next_index)
             # create folder
             if(plant_col != -1 and plant_next_index != -1):
+                '''
+                If the scheduling is success, we execute the plant reconstruct procedure.
+                '''
                 case_folder_root = MS.create_case_folder(plant_col, plant_next_index)
                 plant_reconstruct_req = plant_reconstructRequest()
-                plant_reconstruct_res = plant_reconstructResponse()
                 plant_reconstruct_req.plant_id.data = str(MS.plant_id[plant_col])
                 plant_reconstruct_req.marker_offset = marker_offset
                 plant_reconstruct_req.folder_path.data = str(case_folder_root)
                 plant_reconstruct_req.marker_id_str.data = str(schedule_result)
                 plant_reconstruct_req.marker_id_int.data = 0
-                rospy.logwarn("Waiting for plant reconstruct service...")
+                rospy.loginfo("Waiting for plant reconstruct service...")
                 plant_reconstruct_service.wait_for_service()
-                
-                plant_reconstruct_res = plant_reconstruct_service.call(plant_reconstruct_req)
-                # rospy.logdebug(plant_reconstruct_req)
-                print(plant_reconstruct_req)
+                plant_reconstruct_res:plant_reconstructResponse = plant_reconstruct_service.call(plant_reconstruct_req)
+
+                # print(plant_reconstruct_req)
                 print(plant_reconstruct_res)
 
                 #Log the Failure case into a list and change the flag (timestamp) back after all plant is scanned.
                 # if(plant_reconstruct_res.Success.data == True):
-                plant_reconstruct_res.Success.data = True
-                MS.log_operation(plant_col,plant_next_index)
-                if(plant_reconstruct_res.Success.data == False):
-                    failure_cases.append([plant_col,plant_next_index])
+                # plant_reconstruct_res.Success.data = True
+                # if(plant_reconstruct_res.Success.data == False):
+                #     failure_cases.append([plant_col,plant_next_index])
+                if(plant_reconstruct_res.Success.data == True):
+                    MS.log_operation(plant_col,plant_next_index)
+                else:
                     rospy.logwarn("The Marker %s not found!", str(schedule_result))
+                    failure_cases.append([plant_col,plant_next_index])
+
                 rospy.Rate(0.2).sleep()
+                if(len(failure_cases)>0):
+                    rospy.logwarn(f"Current failure number: {len(failure_cases)}")
+            rospy.loginfo("")
             rospy.Rate(1).sleep()
-        for failure_case in failure_cases:
-            MS.failure_rollback(failure_case[0],failure_case[1])
+
+        # for failure_case in failure_cases:
+        #     MS.failure_rollback(failure_case[0],failure_case[1])
         rospy.Rate(1).sleep()
         print("")
-
         if(rospy.is_shutdown()):
             quit()
 
