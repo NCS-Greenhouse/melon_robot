@@ -148,31 +148,35 @@ def main():
    lastCommand = ""
    try:
         while not rospy.is_shutdown():
-            #print(controlCommand)
-            print(ip, port)
-            client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            client.connect((ip, port)) 
-            client.send(("GET /paramC01="+controlCommand+" HTTP/1.1\r\n\r\n\r\n\r\n").encode('utf-8'))
-            recv_data = client.recv(70)
-            rospy.logdebug(recv_data)
-            data_temp = recv_data.split(',')
-            #print(data_temp)
-            # if the car is not heavy enough, the following lines is not need
-            '''
-            if(int(data_temp[1])<=3000 and int(data_temp[1])>=-3000):
-                temp1 = '000000'
-            else:
-                temp1 = data_temp[1]
+            try:
+                print(controlCommand)
+                print(ip, port)
+                client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                client.connect((ip, port)) 
+                client.send(("GET /paramC01="+controlCommand+" HTTP/1.1\r\n\r\n\r\n\r\n").encode('utf-8'))
+                recv_data = client.recv(70)
+                rospy.logdebug(recv_data)
+                data_temp = recv_data.split(',')
+                print(data_temp)
+                # if the car is not heavy enough, the following lines is not needed
+                '''
+                if(int(data_temp[1])<=3000 and int(data_temp[1])>=-3000):
+                    temp1 = '000000'
+                else:
+                    temp1 = data_temp[1]
 
-            if(int(data_temp[3])<=3000 and int(data_temp[3])>=-3000):
-                temp3 = '000000'
-            else:
-                temp3 = data_temp[3]
-            data_send = data_temp[0]+','+temp1+','+data_temp[2]+','+temp3
-            '''
-            data_send = data_temp[0]+','+data_temp[1]+','+data_temp[2]+','+data_temp[3]
-            pubRPM.publish(data_send)
-            client.close()
+                if(int(data_temp[3])<=3000 and int(data_temp[3])>=-3000):
+                    temp3 = '000000'
+                else:
+                    temp3 = data_temp[3]
+                data_send = data_temp[0]+','+temp1+','+data_temp[2]+','+temp3
+                '''
+                data_send = data_temp[0]+','+data_temp[1]+','+data_temp[2]+','+data_temp[3]
+                pubRPM.publish(data_send)
+                client.close()
+            except:
+                rospy.logerr("Connection Prlblem.")
+
             rate.sleep()
    finally:
        rospy.loginfo("Exit Main Thread")
