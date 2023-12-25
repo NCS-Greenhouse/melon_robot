@@ -294,6 +294,7 @@ class TM_Controller(object):
         eTMJS_Res.request_pose.pose.orientation.w = quater[3]
 
         return eTMJS_Res
+    
     def set_pose_goal(self, x, y, z, rx, ry, rz, rw)-> Pose():
         '''
         Warp the x, y, z, quaternion to a Pose object
@@ -314,12 +315,15 @@ class TM_Controller(object):
         This function is a service callback which move the robot arm to requested position.
         The request and response messages show below:
 
+        ## Service name: execute_tm_pose
+
         ### Request
         * int16 EXECUTE_SUCCESS = 0
         * int16 EXECUTE_TIMEOUT = -1
         * int16 EXECUTE_INACCURACY = -2
-        ### Response
         * geometry_msgs/PoseStamped pose
+
+        ### Response
         * geometry_msgs/PoseStamped request_pose
         * geometry_msgs/PoseStamped final_pose
         * float32 executing_time
@@ -327,9 +331,9 @@ class TM_Controller(object):
         * sensor_msgs/JointState[] executed_trajectory_js
         * geometry_msgs/PoseStamped[] executed_tarjectory_pose
         '''
+        
         delta = 1e-3
         self.move_group.set_pose_target(request.pose.pose)
-
         t_start = time.time()
         success = self.move_group.go(wait = False)
         fihished = False
@@ -368,9 +372,7 @@ class TM_Controller(object):
         response.final_pose = self.move_group.get_current_pose()
         response.request_pose = request.pose
         response.error_code = success
-
         return response
-
 
     def compute_tm_fk_service(self, request:compute_tm_fkRequest) ->compute_tm_fkResponse:
         #Not finished
@@ -390,7 +392,6 @@ class TM_Controller(object):
         ctmfkRes.vadaility = result.error_code.val
         return ctmfkRes
 
-        
     def compute_tm_ik_service(self, request:compute_tm_ikRequest)->compute_tm_ikResponse:
         '''
         A callback function which compute the possible inverse kinematics solutions.
