@@ -367,7 +367,6 @@ if __name__ == '__main__':
         
         # Move the Arm into sfaety position BEFROE the UGV moves (optional, automatically needed)
 
-
         # Restore the arm into safe pose
         rospy.loginfo(f"Setting the Target Marker ID to {schedule_result}.")
         rospy.loginfo("Set parameter \"ArmRequest\"on advantech to 1")
