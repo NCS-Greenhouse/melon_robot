@@ -1088,6 +1088,7 @@ bool plant_scanning_service(robot_control_pkg::plant_reconstruct::Request &reque
         update_FSM_srv.call(fsm_srv.request,fsm_srv.response);
         ros::Duration(0.5).sleep();
 
+        // Control the robot, scanning the target region and stop if ArUco marker(s) has been detected.
         robot_control_pkg::execute_tm_js_and_wait_aruco eTMjsArUco;
         eTMjsArUco.request.joint_state.position = init_js_greenhouse;
         eTMjsArUco.request.joint_state.position[0] = 0.3;
