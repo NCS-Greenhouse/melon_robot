@@ -1,5 +1,17 @@
 # melon_robot
 
+Branch name: develop/ugv-code-integration
+
+## Current Tasks
+
+### 1225 Remote Control Test:
+* [Require] Prepare a long website cable
+* Purpose: check how to safely control the UGV.
+
+If the task of Remote control task is done, do the following tasks
+* Merge the 
+* Connect two realsense at the same time, check the serial number and different settings.
+
 ## Team Member: [Your Name]
 
 ### Project Overview
