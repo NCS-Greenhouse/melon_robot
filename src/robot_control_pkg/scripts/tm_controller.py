@@ -46,7 +46,7 @@ class TM_Controller(object):
     def __init__(self):
         super(TM_Controller, self).__init__()
         moveit_commander.roscpp_initialize(sys.argv)
-        rospy.init_node("tm_controller_node", anonymous=True, log_level=rospy.DEBUG)
+        rospy.init_node("tm_controller_node", anonymous=True, log_level=rospy.INFO)
         self.TM_DESCRIPTION_PKG_PATH = rospkg.RosPack().get_path('tm_description')
 
         display_trajectory_publisher = rospy.Publisher(
@@ -154,14 +154,16 @@ class TM_Controller(object):
                 if(abs(curr_js[i] - position[i])>angle_tolorance):
                     finished = False
                     break
+            rospy.loginfo("here")
             js_pos_list.append(curr_js)
             ros_time_list.append(rospy.Time.now())
 
             #get aruco 
-            aruco_pose_array = rospy.wait_for_message("/aruco_pose_array_stamped", Aruco_PoseArray_ID)
+            aruco_pose_array:Aruco_PoseArray_ID = rospy.wait_for_message("/aruco_pose_array_stamped", Aruco_PoseArray_ID)
             # if(aruco_pose_array.Aruco_ID)
-            if(any(aruco_pose_array.Aruco_ID) == request.target_id and len(aruco_pose_array.Aruco_PoseArray.poses)>0):
-                print("detected", aruco_pose_array.Aruco_ID)
+            rospy.loginfo(f"request:{request.target_id}, detected:{aruco_pose_array.Aruco_ID}")
+            if(request.target_id in aruco_pose_array.Aruco_ID) and len(aruco_pose_array.Aruco_PoseArray.poses)>0:
+                rospy.loginfo(f"Marker Detected, ID= {request.target_id}")
                 eTMJS_Res.found_aruco = 1
                 finished = True
                 self.move_group.stop()
