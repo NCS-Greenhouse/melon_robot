@@ -70,13 +70,15 @@ class TM_Controller(object):
         
         self.planning_frame = self.move_group.get_planning_frame() #world
         # self.move_group.get_planning_frame()
-        rospy.logdebug("Planning frame: %s" % self.planning_frame)
+        rospy.loginfo("Planning frame: %s" % self.planning_frame)
+
 
         self.eef_link = self.move_group.get_end_effector_link() #tool0
-        rospy.logdebug("End effector link: %s" % self.eef_link)
+        rospy.loginfo("End effector link: %s" % self.eef_link)
 
+        # self.move_group.set_pose_reference_frame("tool0")
         self.group_names = self.robot.get_group_names()
-        rospy.logdebug("Available Planning Groups: %s", self.robot.get_group_names())
+        rospy.loginfo("Available Planning Groups: %s", self.robot.get_group_names())
 
         self.exe_tmjsSrv = rospy.Service('execute_tm_js', execute_tm_js, self.execute_tm_js_service)
         self.exe_tmfkSrv = rospy.Service('compute_tm_fk', compute_tm_fk, self.compute_tm_fk_service)
@@ -132,6 +134,7 @@ class TM_Controller(object):
 
 
         self.move_group.set_max_velocity_scaling_factor(0.05)
+        self.move_group.set_planning_time(3.0)
         self.move_group.set_joint_value_target(position)
         print(self.move_group.plan()[1].joint_trajectory)
         
@@ -332,6 +335,8 @@ class TM_Controller(object):
         '''
         
         delta = 1e-3
+        print("Current Frame id  = ", self.move_group.get_planning_frame())
+        # self.move_group.set_frame
         self.move_group.set_pose_target(request.pose.pose)
         t_start = time.time()
         success = self.move_group.go(wait = False)
@@ -357,11 +362,11 @@ class TM_Controller(object):
                 continue
             else:
                 fihished = True
+                # success = True
         self.move_group.stop()
         self.move_group.clear_pose_targets()
         t_end = time.time()
         response = execute_tm_poseResponse()
-        # response.executed_tarjectory_pose = pose_list
         assert len(joint_state_list) == len(pose_list)
         for i in range(len(joint_state_list)):
             joint_state_list[i].header.seq = i
