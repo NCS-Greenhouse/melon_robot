@@ -1009,53 +1009,63 @@ void pointPickingCallback(const pcl::visualization::PointPickingEvent& event, vo
 
 }
 
+/**
+ * @brief This is the main plant reconstruct service.
+ * 
+ * @param request 
+ * @param response 
+ * @return true 
+ * @return false 
+ */
 bool plant_scanning_service(robot_control_pkg::plant_reconstruct::Request &request, robot_control_pkg::plant_reconstruct::Response &response){
-    ROS_INFO("In Service Function");
+    
+    //Streaming the incoming commands for debug
+    ROS_INFO("In Plant Reconstruction Service.");
     std::cout << request.folder_path << std::endl;
     std::cout << request.plant_id << std::endl;
     std::cout << request.marker_offset << std::endl;
     std::cout << request.marker_id_str << std::endl;
-    // last_base_aruco_init.setIdentity();
+
+    // Init Parameters
     int v1(0), v2(1);
-    // float marker_offset_x = -0.25;
     float start_radius = 0.7;
     float search_interval = 0.15;
-    // Exist accurate position?
-
     tm_msgs::WriteItem item;
     robot_control_pkg::Job_Status status;
     robot_control_pkg::FSM_Msg fsm_msg;
     robot_control_pkg::update_FSM fsm_srv;
     sensor_msgs::Image::ConstPtr image_checkpt_obj;
-
-    item.request.id = std::to_string(0);
-    item.request.item = "Camera_Light";
-    item.request.value = std::to_string(1);
-    write_item_srv.call(item.request,item.response);
-    
-
-    std::vector<double> init_js_greenhouse{-0.379493997170648,
+    compute_tm_fk ctmFk; //define compute forward kinematic object
+    compute_tm_ik ctmIk; //define compute inverse kinematic object
+    std::vector<double> init_js_greenhouse{-0.35,
         0.8069331497621015,
         -0.9356490515678113,
         0.8786732500486015,
         1.7707593777693327,
         -0.18170818025589258};
+    
+    // Turn on the light of TM Robot
+    item.request.id = std::to_string(0);
+    item.request.item = "Camera_Light";
+    item.request.value = std::to_string(1);
+    write_item_srv.call(item.request,item.response);
+
+
 
     Eigen::Affine3d TF_tool_camera;
     Eigen::Quaterniond quaternion_camera_tool = Eigen::Quaterniond(-0.00707, -0.004088, -0.027736, 0.999582); //wxyz
     Eigen::Vector3d position_camera_tool = Eigen::Vector3d(0.02424017, 0.12422165, 0.05114026);
+    //[Improvememt] Consider use tf to get the transformation
     assign_affine3d(TF_tool_camera,quaternion_camera_tool,position_camera_tool);
     
     Eigen::Affine3d TF_Camera_ArUco;
     Eigen::Vector3d position_marker; //averaged position
     Eigen::Quaterniond quaternion_marker = Eigen::Quaterniond(0,0,0,0);
-    execute_tm_js eTMjs; //YThe execute TechMan Robot Joint state data type
+    execute_tm_js eTMjs; //The execute TechMan Robot Joint state data type
     geometry_msgs::PoseStamped::ConstPtr initial_robot_pose; 
     Eigen::Affine3d TF_base_tool;
     Eigen::Affine3d T_base_root;
     Eigen::Affine3d T_vp_aruco;
-    compute_tm_fk ctmFk;
-    compute_tm_ik ctmIk;
     geometry_msgs::PoseStamped ps_stamped;
     geometry_msgs::Pose ps;
     float fixed_y_angle = -(270 - 270);
@@ -1063,115 +1073,138 @@ bool plant_scanning_service(robot_control_pkg::plant_reconstruct::Request &reque
     std::cout << "last_marker_id == request.marker_id.data?" << (last_marker_id == request.marker_id_str.data) << std::endl;
     if(last_marker_id != request.marker_id_str.data){
         eTMjs.request.joint_state.position = init_js_greenhouse;
+        eTMjs.request.joint_state.position[0] = 0.3;
+
+        #pragma region Debug Msgs:"Goto Initial Search Position"
         status.header.stamp = ros::Time::now();
         status.item.data = "Goto Initial Search Position";
         program_status_pub.publish(status);
-
         fsm_srv.request.status = fsm_srv.request.GOTO_STANDBY_POSE;
         fsm_srv.request.header.stamp = ros::Time::now();
         update_FSM_srv.call(fsm_srv.request,fsm_srv.response);
+        #pragma endregion
 
-
-        execute_tm_js_service.call(eTMjs.request,eTMjs.response); // Move to Standby Pose
-
-        fsm_srv.request.status = fsm_srv.request.GOTO_STANDBY_POSE_DONE;
-        fsm_srv.request.header.stamp = ros::Time::now();
-        update_FSM_srv.call(fsm_srv.request,fsm_srv.response);
-
+        // Ask the robot to move to the initial pose
+        execute_tm_js_service.call(eTMjs.request,eTMjs.response); 
+        
+        #pragma region Debug Msgs:"[DONE] Goto Initial Search Position"
         status.header.stamp = ros::Time::now();
         status.item.data = "[Done] Go to Initial Viewpoint";
         program_status_pub.publish(status);
-        image_check_point_pub.publish(ros::topic::waitForMessage<sensor_msgs::Image>("/camera/color/image_raw",ros::Duration(0.5)));
-        
-        fsm_srv.request.status = fsm_srv.request.ARUCO_MARKER_NOT_FOUND;
+        fsm_srv.request.status = fsm_srv.request.GOTO_STANDBY_POSE_DONE;
         fsm_srv.request.header.stamp = ros::Time::now();
         update_FSM_srv.call(fsm_srv.request,fsm_srv.response);
-        ros::Duration(0.5).sleep();
+        #pragma endregion
+        
+        //Publish the image checkpoint at [Robot Standby position]
+        image_check_point_pub.publish(ros::topic::waitForMessage<sensor_msgs::Image>("/camera/color/image_raw",ros::Duration(0.5)));
 
         // Control the robot, scanning the target region and stop if ArUco marker(s) has been detected.
         robot_control_pkg::execute_tm_js_and_wait_aruco eTMjsArUco;
-        eTMjsArUco.request.joint_state.position = init_js_greenhouse;
-        eTMjsArUco.request.joint_state.position[0] = 0.3;
-        eTMjsArUco.request.target_id = 0;
+        eTMjsArUco.request.joint_state.position = init_js_greenhouse; //set starting joint states
+        eTMjsArUco.request.target_id = 0; //Figure out this variable
         execute_tm_js_aruco_service.call(eTMjsArUco.request,eTMjsArUco.response);
         
+        //why not change the service and return the required pose??????
         if(eTMjsArUco.response.found_aruco == 1){
-            Aruco_PoseArray_ID::ConstPtr pose = ros::topic::waitForMessage<Aruco_PoseArray_ID>("/aruco_pose_array_stamped",ros::Duration(1));
-            if(pose){
-                std::cout << *pose << std::endl;
-                if(pose->Aruco_PoseArray.poses.size() >0){
-                    
-                    int marker_index = -1;
-                    // Find whether the a required marker is found
-                    for (size_t i = 0; i < pose->Aruco_PoseArray.poses.size(); i++)
-                    {
-                        if(pose->Aruco_ID[i] == request.marker_id_int.data){
-                            marker_index = i;
+            uint8_t max_attemp = 5;
+            uint8_t curr_attemp = 0;
+            while(curr_attemp < max_attemp){
+                Aruco_PoseArray_ID::ConstPtr pose = ros::topic::waitForMessage<Aruco_PoseArray_ID>("/aruco_pose_array_stamped",ros::Duration(1));
+                if(!pose){
+                    ROS_ERROR("aruco_pose_array_stamped Error!");
+                    curr_attemp += 1;
+                    continue;
+                }else{
+                    if(pose->Aruco_PoseArray.poses.size() >0){
+                        int marker_index = -1;
+                        // Find whether the a required marker is found
+                        for (size_t i = 0; i < pose->Aruco_PoseArray.poses.size(); i++)
+                        {
+                            if(pose->Aruco_ID[i] == request.marker_id_int.data){
+                                marker_index = i;
+                                // [dev] consider add a break;
+                            }
+                        }
+                        if(marker_index == -1){
+                            ROS_ERROR("No marker Found");
+                            // Return service object 
+                            response.Success.data = false;
+                            return true;
+                        }
+                        
+                        std::cout << pose->Aruco_PoseArray.poses[marker_index] << std::endl;
+                        std::cout << pose->Aruco_ID[marker_index] << std::endl;
+
+                        #pragma region Debug Msgs:"Marker Found"                 
+                        status.header.stamp = ros::Time::now();
+                        status.item.data = "Marker Found";
+                        program_status_pub.publish(status);
+                        fsm_srv.request.status = fsm_srv.request.ARUCO_MARKER_FOUND;
+                        fsm_srv.request.header.stamp = ros::Time::now();
+                        update_FSM_srv.call(fsm_srv.request,fsm_srv.response);
+                        image_check_point_pub.publish(ros::topic::waitForMessage<sensor_msgs::Image>("/camera/color/image_raw"));
+                        #pragma endregion
+
+                        ros::Duration(0.5).sleep();
+                        std::cout << "position_marker = " << position_marker.matrix()<<std::endl;
+                        std::cout << "quaternion_marker = " << quaternion_marker.matrix()<<std::endl;
+                        position_marker(0) = pose->Aruco_PoseArray.poses[marker_index].position.x;
+                        position_marker(1) = pose->Aruco_PoseArray.poses[marker_index].position.y;
+                        position_marker(2) = pose->Aruco_PoseArray.poses[marker_index].position.z;
+                        quaternion_marker.w() = pose->Aruco_PoseArray.poses[marker_index].orientation.w;
+                        quaternion_marker.x() = pose->Aruco_PoseArray.poses[marker_index].orientation.x;
+                        quaternion_marker.y() = pose->Aruco_PoseArray.poses[marker_index].orientation.y;
+                        quaternion_marker.z() = pose->Aruco_PoseArray.poses[marker_index].orientation.z;
+                        printf("[x,y,z,w,x,y,z] = [%lf,%lf,%lf,%lf,%lf,%lf,%lf]\n",
+                            pose->Aruco_PoseArray.poses[marker_index].position.x,
+                            pose->Aruco_PoseArray.poses[marker_index].position.y,
+                            pose->Aruco_PoseArray.poses[marker_index].position.z,
+                            pose->Aruco_PoseArray.poses[marker_index].orientation.w,
+                            pose->Aruco_PoseArray.poses[marker_index].orientation.x,
+                            pose->Aruco_PoseArray.poses[marker_index].orientation.y,
+                            pose->Aruco_PoseArray.poses[marker_index].orientation.z);
+                        assign_affine3d(TF_Camera_ArUco,quaternion_marker,position_marker);
+                        std::cout << "TF_Camera_ArUco = " << TF_Camera_ArUco.matrix() << std::endl;
+                        initial_robot_pose = ros::topic::waitForMessage<geometry_msgs::PoseStamped>("/tool_pose"); //[BUG] Is that accurate???
+                        if(initial_robot_pose){
+                            Eigen::Quaterniond quaternion_tool_pose = Eigen::Quaterniond(   initial_robot_pose->pose.orientation.w,
+                                                                                            initial_robot_pose->pose.orientation.x,
+                                                                                            initial_robot_pose->pose.orientation.y,
+                                                                                            initial_robot_pose->pose.orientation.z);
+                            Eigen::Vector3d position_tool_pose = Eigen::Vector3d(   initial_robot_pose->pose.position.x,
+                                                                                    initial_robot_pose->pose.position.y,
+                                                                                    initial_robot_pose->pose.position.z);
+                            assign_affine3d(TF_base_tool, quaternion_tool_pose, position_tool_pose);
                         }
                     }
-                    if(marker_index == -1){
-                        ROS_ERROR("No marker Found");
-                        // Return service object 
-                        response.Success.data = false;
-                        return true;
-                    }
-                    
-                    std::cout << pose->Aruco_PoseArray.poses[marker_index] << std::endl;
-                    std::cout << pose->Aruco_ID[marker_index] << std::endl;
-                    
-                    // if(pose->Aruco_ID[0] == 0){
-                    status.header.stamp = ros::Time::now();
-                    status.item.data = "Marker Found";
-                    program_status_pub.publish(status);
-                    image_check_point_pub.publish(ros::topic::waitForMessage<sensor_msgs::Image>("/camera/color/image_raw"));
-                    fsm_srv.request.status = fsm_srv.request.ARUCO_MARKER_FOUND;
-                    fsm_srv.request.header.stamp = ros::Time::now();
-                    update_FSM_srv.call(fsm_srv.request,fsm_srv.response);
-                    ros::Duration(0.5).sleep();
-                    std::cout << "position_marker = " << position_marker.matrix()<<std::endl;
-                    std::cout << "quaternion_marker = " << quaternion_marker.matrix()<<std::endl;
-                    position_marker(0) = pose->Aruco_PoseArray.poses[marker_index].position.x;
-                    position_marker(1) = pose->Aruco_PoseArray.poses[marker_index].position.y;
-                    position_marker(2) = pose->Aruco_PoseArray.poses[marker_index].position.z;
-                    quaternion_marker.w() = pose->Aruco_PoseArray.poses[marker_index].orientation.w;
-                    quaternion_marker.x() = pose->Aruco_PoseArray.poses[marker_index].orientation.x;
-                    quaternion_marker.y() = pose->Aruco_PoseArray.poses[marker_index].orientation.y;
-                    quaternion_marker.z() = pose->Aruco_PoseArray.poses[marker_index].orientation.z;
-                    printf("[x,y,z,w,x,y,z] = [%lf,%lf,%lf,%lf,%lf,%lf,%lf]\n",
-                        pose->Aruco_PoseArray.poses[marker_index].position.x,
-                        pose->Aruco_PoseArray.poses[marker_index].position.y,
-                        pose->Aruco_PoseArray.poses[marker_index].position.z,
-                        pose->Aruco_PoseArray.poses[marker_index].orientation.w,
-                        pose->Aruco_PoseArray.poses[marker_index].orientation.x,
-                        pose->Aruco_PoseArray.poses[marker_index].orientation.y,
-                        pose->Aruco_PoseArray.poses[marker_index].orientation.z);
-                    assign_affine3d(TF_Camera_ArUco,quaternion_marker,position_marker);
-                    std::cout << "TF_Camera_ArUco = " << TF_Camera_ArUco.matrix() << std::endl;
-                    initial_robot_pose = ros::topic::waitForMessage<geometry_msgs::PoseStamped>("/tool_pose");
-
-                    // std::cout << initial_robot_pose << std::endl;
-                    if(initial_robot_pose){
-                        Eigen::Quaterniond quaternion_tool_pose = Eigen::Quaterniond(   initial_robot_pose->pose.orientation.w,
-                                                                                        initial_robot_pose->pose.orientation.x,
-                                                                                        initial_robot_pose->pose.orientation.y,
-                                                                                        initial_robot_pose->pose.orientation.z);
-                        Eigen::Vector3d position_tool_pose = Eigen::Vector3d(   initial_robot_pose->pose.position.x,
-                                                                                initial_robot_pose->pose.position.y,
-                                                                                initial_robot_pose->pose.position.z);
-                        assign_affine3d(TF_base_tool, quaternion_tool_pose, position_tool_pose);
-                    }
-                    // }
-                }else{
-                    return 0;
                 }
                 
             }
+            if(curr_attemp == max_attemp){
+                ROS_ERROR("Error in getting the aruco marker!. Aborted");
+                response.Success.data = -1;
+                return true;
+            }
         }
         else{
+            /**
+             * @brief If the aruco marker is not found, stop the program and return the error code "-1"
+             * 
+             */
+            fsm_srv.request.status = fsm_srv.request.ARUCO_MARKER_NOT_FOUND;
+            fsm_srv.request.header.stamp = ros::Time::now();
+            update_FSM_srv.call(fsm_srv.request,fsm_srv.response);
             ROS_ERROR("ArUco Not Found.");
             response.Success.data = -1;
             return true;
         }
+        
+        return;
+
+
+
+
         Eigen::Affine3d T_base_aruco_init = TF_base_tool*TF_tool_camera*TF_Camera_ArUco;
         std::cout << "TF_base_tool = \n" << TF_base_tool.matrix() << std::endl;
         std::cout << "TF_tool_camera = \n" << TF_tool_camera.matrix() << std::endl;
@@ -1326,6 +1359,7 @@ bool plant_scanning_service(robot_control_pkg::plant_reconstruct::Request &reque
 
     }else{
         //Directly get the cached marker position
+        //[IMPROVEMENT] consider use a formal way to restore these variables.!!!!
         Eigen::Affine3d TF_ArUco_root;
         TF_ArUco_root.setIdentity();
         TF_ArUco_root.translation() = Eigen::Vector3d(request.marker_offset.x,request.marker_offset.y,request.marker_offset.z);
@@ -1641,11 +1675,6 @@ bool plant_scanning_service(robot_control_pkg::plant_reconstruct::Request &reque
     T_base_root;
     save_matrix(T_base_root,
         request.folder_path.data +"/T_base_root.txt");
-
-
-
-
-
 
     #pragma region Leaf_Captureing
     viewer->addPointCloud(cloud_global,"cloud_global",v1);

@@ -16,7 +16,7 @@ from robot_control_pkg.srv import execute_tm_jsRequest, execute_tm_jsResponse, e
 from robot_control_pkg.srv import execute_tm_pose,  execute_tm_poseRequest, execute_tm_poseResponse
 from robot_control_pkg.srv import compute_tm_fkRequest, compute_tm_fkResponse, compute_tm_fk
 from robot_control_pkg.srv import compute_tm_ikRequest, compute_tm_ikResponse, compute_tm_ik
-from robot_control_pkg.srv import execute_tm_js_and_wait_aruco, execute_tm_js_and_wait_arucoResponse
+from robot_control_pkg.srv import execute_tm_js_and_wait_aruco, execute_tm_js_and_wait_arucoRequest, execute_tm_js_and_wait_arucoResponse
 from robot_control_pkg.msg import Aruco_PoseArray_ID
 from moveit_msgs.srv import GetPositionIK, GetPositionIKRequest, GetPositionIKResponse
 from moveit_msgs.srv import GetPositionFK, GetPositionFKRequest, GetPositionFKResponse
@@ -121,7 +121,7 @@ class TM_Controller(object):
         self.gpfkr.robot_state.joint_state.name = self.name
 
     
-    def execute_tm_js_and_wait_aruco_service(self, request):
+    def execute_tm_js_and_wait_aruco_service(self, request:execute_tm_js_and_wait_arucoRequest):
         """
         This function is specifically desgined for aruco finding and moving.
         """
@@ -164,11 +164,10 @@ class TM_Controller(object):
                 print("detected", aruco_pose_array.Aruco_ID)
                 eTMJS_Res.found_aruco = 1
                 finished = True
+                self.move_group.stop()
+                rospy.loginfo("STOP CMD.")
                 #Call Service here
-                
         
-            # rate.sleep()
-        self.move_group.stop()
         t_end = time.time()
         for i in range(len(js_pos_list)):
             js = JointState()
@@ -177,15 +176,13 @@ class TM_Controller(object):
             js.position = js_pos_list[i]
             js_list.append(js)
         #consider move js appedn outside, only save data in loop
-        self.move_group.stop()
-        rospy.loginfo("STOP CMD.")
         eTMJS_Res.executed_trajectory_js = js_list
         eTMJS_Res.executing_time = t_end - t_start
         eTMJS_Res.error_code = 1
         eTMJS_Res.final_pose = self.get_pose()
         desired_mtx = self.kdl_kin.forward(position)
         quater = quaternion_from_matrix(desired_mtx)
-        eTMJS_Res.request_pose.header.frame_id = "tool0"
+        eTMJS_Res.request_pose.header.frame_id = "tool0" ###[BUG:WHY Tool 0?]
         eTMJS_Res.request_pose.pose.position.x = desired_mtx[0,3]
         eTMJS_Res.request_pose.pose.position.y = desired_mtx[1,3]
         eTMJS_Res.request_pose.pose.position.z = desired_mtx[2,3]

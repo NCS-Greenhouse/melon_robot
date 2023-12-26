@@ -403,7 +403,7 @@ if __name__ == '__main__':
                 plant_reconstruct_req.marker_offset = marker_offset
                 plant_reconstruct_req.folder_path.data = str(case_folder_root)
                 plant_reconstruct_req.marker_id_str.data = str(schedule_result)
-                plant_reconstruct_req.marker_id_int.data = 0
+                plant_reconstruct_req.marker_id_int.data = 0 #Please change this variable to connect the CPP file!!!!!
                 rospy.loginfo("Waiting for plant reconstruct service...")
                 plant_reconstruct_service.wait_for_service()
                 plant_reconstruct_res:plant_reconstructResponse = plant_reconstruct_service.call(plant_reconstruct_req)
