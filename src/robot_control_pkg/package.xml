@@ -73,6 +73,7 @@
   <depend>sensor_msgs</depend>
   <depend>geometry_msgs</depend>
   <depend>visualization_msgs</depend>
+  <build_depend>tf2_geometry_msgs</build_depend>
 
 
   <!-- The export tag contains other, unspecified, tags -->

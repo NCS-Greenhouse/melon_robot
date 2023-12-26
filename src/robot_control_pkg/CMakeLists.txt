@@ -23,6 +23,7 @@ find_package(catkin REQUIRED
   tm_msgs
   visualization_msgs
   visualization_msgs
+  tf2
 )
 
 ## System dependencies are found with CMake's conventions
