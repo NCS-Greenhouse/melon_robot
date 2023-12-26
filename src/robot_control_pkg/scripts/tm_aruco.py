@@ -17,7 +17,7 @@ from std_msgs.msg import Bool,Int16MultiArray, String
 from geometry_msgs.msg import PointStamped, PoseArray, PoseStamped
 from robot_control_pkg.msg import Aruco_PoseArray_ID
 from cv_bridge import CvBridge,CvBridgeError
-import rospy, rospkg
+import rospy, rospkg, rosnode
 import numpy as np
 import tf, tf.transformations
 
@@ -63,6 +63,9 @@ class ArUcoMarker_Handler:
         self.boards = _aruco_boards.get_boards()
         self.aruco_parameters = cv2.aruco.DetectorParameters()
         
+        # Check node here
+
+
         # Get camera parameters
         self.mtx_realsense, self.dist_realsense = self.get_camera_param(640,480,camera=self.camera_type)
         
@@ -71,14 +74,19 @@ class ArUcoMarker_Handler:
 
         # Set image topic and frame id based on camera type
         self.listener = tf.TransformListener()
+        rospy.loginfo("Waiting for Transform.")
         self.listener.waitForTransform('/base', '/camera_color_optical_frame', rospy.Time(0), rospy.Duration(4.0))
         
         # Create OpenCV bridge
         self.cv_bridge = CvBridge()
         rospy.loginfo("ArUco Detector Set.")
 
+    def check_realsense_exist(self)->bool:
+        return rosnode.rosnode_ping("/camera/realsense2_camera")
     def get_camera_param(self,w,h,camera = "color"):
         # Function to get camera parameters based on camera type and resolution
+        mtx = None
+        dist = None
         if self.simulation:
             mtx = np.array([[924.2759399414062, 0.0, 640.0],[0.0, 924.2759399414062,360.0],[ 0.0, 0.0, 1.0]])
             dist = np.array([[ 0.14022919,-0.46522043,-0.00670384,0.00170763,0.41150515]])     
@@ -115,6 +123,7 @@ class ArUcoMarker_Handler:
     def get_aruco_pose(self):
         # Function to get ArUco pose and publish it
         data:Image =  rospy.wait_for_message('/camera/color/image_raw', Image,timeout=1.0)
+
         self.current_stamp = data.header.stamp
         color_image = self.cv_bridge.imgmsg_to_cv2(data,desired_encoding="passthrough") #trahsform raw data to cv recognizable data
         if(self.camera_type == "color"):
@@ -137,7 +146,8 @@ class ArUcoMarker_Handler:
         pose_array_base.header.stamp = rospy.Time.now()
         rvec = None
         tvec = None
-
+        if(ids is None):
+            rospy.logwarn_throttle(1, "No ArUco Marker(s) have been detected.")
         if ids is not None:
             # Get the transformation matrix
             try:
@@ -187,11 +197,11 @@ class ArUcoMarker_Handler:
                     cv2.drawFrameAxes(gray, self.mtx_realsense, self.dist_realsense, rvec, tvec, 0.08)
                     cv2.aruco.drawDetectedMarkers(gray, corners)
 
-        pose_array.header.frame_id = self.frame_id
-        pose_array.header.stamp = data.header.stamp
-        custon_aruco_array_with_id.Aruco_PoseArray = pose_array
-        custon_aruco_array_with_id.Aruco_Pose_on_Base = pose_array_base
-        self.aruco_pose_arr_pub.publish(custon_aruco_array_with_id)
+            pose_array.header.frame_id = self.frame_id
+            pose_array.header.stamp = data.header.stamp
+            custon_aruco_array_with_id.Aruco_PoseArray = pose_array
+            custon_aruco_array_with_id.Aruco_Pose_on_Base = pose_array_base
+            self.aruco_pose_arr_pub.publish(custon_aruco_array_with_id)
         cv2.imshow("frame",gray)
         cv2.waitKey(1)
 
@@ -200,6 +210,8 @@ AMH = ArUcoMarker_Handler()
 
 # Main loop
 while(not rospy.is_shutdown()):
+    # if(AMH.check_realsense_exist()):
     AMH.get_aruco_pose()
+    rospy.Rate(100).sleep()
 
 rospy.loginfo("ArUco Detector is shutting down. ")
