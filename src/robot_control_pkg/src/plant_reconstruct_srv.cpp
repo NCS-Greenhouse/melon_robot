@@ -81,6 +81,9 @@
 #include <robot_control_pkg/upload_img.h>
 #include <robot_control_pkg/upload_imgRequest.h>
 #include <robot_control_pkg/upload_imgResponse.h>
+#include <robot_control_pkg/execute_tm_pose.h>
+#include <robot_control_pkg/execute_tm_poseRequest.h>
+#include <robot_control_pkg/execute_tm_poseResponse.h>
 
 #include <sensor_msgs/JointState.h>
 #include <sensor_msgs/PointCloud2.h>
@@ -127,6 +130,7 @@ ros::ServiceClient execute_tm_js_service;
 ros::ServiceClient execute_tm_js_aruco_service;
 ros::ServiceClient compute_tm_ik_service;
 ros::ServiceClient compute_tm_fk_service;
+ros::ServiceClient execute_tm_pose_service;
 ros::ServiceClient execute_ICP_srv;
 ros::ServiceClient check_OLD_srv;
 ros::ServiceClient update_FSM_srv;
@@ -1067,6 +1071,7 @@ bool plant_scanning_service(robot_control_pkg::plant_reconstruct::Request &reque
     sensor_msgs::Image::ConstPtr image_checkpt_obj;
     compute_tm_fk ctmFk; //define compute forward kinematic object
     compute_tm_ik ctmIk; //define compute inverse kinematic object
+    execute_tm_pose etmPose;
     std::vector<double> init_js_greenhouse{-0.35,
         0.8069331497621015,
         -0.9356490515678113,
@@ -1198,17 +1203,17 @@ bool plant_scanning_service(robot_control_pkg::plant_reconstruct::Request &reque
                             pose->Aruco_PoseArray.poses[marker_index].orientation.z);
                         assign_affine3d(TF_Camera_ArUco,quaternion_marker,position_marker);
                         std::cout << "TF_Camera_ArUco = " << TF_Camera_ArUco.matrix() << std::endl;
-                        initial_robot_pose = ros::topic::waitForMessage<geometry_msgs::PoseStamped>("/tool_pose"); //[BUG] Is that accurate???
-                        if(initial_robot_pose){
-                            Eigen::Quaterniond quaternion_tool_pose = Eigen::Quaterniond(   initial_robot_pose->pose.orientation.w,
-                                                                                            initial_robot_pose->pose.orientation.x,
-                                                                                            initial_robot_pose->pose.orientation.y,
-                                                                                            initial_robot_pose->pose.orientation.z);
-                            Eigen::Vector3d position_tool_pose = Eigen::Vector3d(   initial_robot_pose->pose.position.x,
-                                                                                    initial_robot_pose->pose.position.y,
-                                                                                    initial_robot_pose->pose.position.z);
-                            assign_affine3d(TF_base_tool, quaternion_tool_pose, position_tool_pose);
-                        }
+                        // initial_robot_pose = ros::topic::waitForMessage<geometry_msgs::PoseStamped>("/tool_pose"); //[BUG] Is that accurate???
+                        // if(initial_robot_pose){
+                        //     Eigen::Quaterniond quaternion_tool_pose = Eigen::Quaterniond(   initial_robot_pose->pose.orientation.w,
+                        //                                                                     initial_robot_pose->pose.orientation.x,
+                        //                                                                     initial_robot_pose->pose.orientation.y,
+                        //                                                                     initial_robot_pose->pose.orientation.z);
+                        //     Eigen::Vector3d position_tool_pose = Eigen::Vector3d(   initial_robot_pose->pose.position.x,
+                        //                                                             initial_robot_pose->pose.position.y,
+                        //                                                             initial_robot_pose->pose.position.z);
+                        //     assign_affine3d(TF_base_tool, quaternion_tool_pose, position_tool_pose);
+                        // }
                     }
                     break;
                 }
@@ -1252,65 +1257,72 @@ bool plant_scanning_service(robot_control_pkg::plant_reconstruct::Request &reque
         }
         Eigen::Affine3d T_base_aruco_init = T_base_camera * TF_Camera_ArUco;
         std::cout << "T_base_camera = \n" << T_base_camera.matrix() << std::endl;
-        std::cout << "T_base_aruco_init = \n" << T_base_aruco_init.matrix() << std::endl;
+        std::cout << "T_base_aruco_init = \n" << T_base_aruco_init.matrix() << std::endl;        
 
-        return true;
+        // T_vp_aruco.matrix().block<3,3>(0,0) = 
+        //     rot_angle(-90,'x',false)*
+        //     rot_angle(fixed_y_angle,'y',false)*
+        //     rot_angle(-M_PI_2/3.0,'x',true); //This guy is based on realsense camera
+        // T_vp_aruco.matrix().block<3,1>(0,3) = Eigen::Vector3d(   cosf(270/RAD)*0.5,
+        //                                                         sinf(270/RAD)*0.5,0.5);
+        // T_vp_aruco = T_base_aruco_init * T_vp_aruco;
+        // eigen2pose(T_vp_aruco,ps);
+        // ps_stamped.pose = ps;
+        // ps_stamped.header.frame_id = FRAME_CAMERA;
+        // //try to use the pose control
+        // etmPose.request.pose = ps_stamped;
+        // std::cout << etmPose.request.pose << std::endl;
+        // execute_tm_pose_service.call(etmPose.request,etmPose.response);
 
-        // std::cout << "TF_base_tool = \n" << TF_base_tool.matrix() << std::endl;
-        // std::cout << "TF_tool_camera = \n" << TF_tool_camera.matrix() << std::endl;
-        // std::cout << "TF_Camera_ArUco = \n" << TF_Camera_ArUco.matrix() << std::endl;
-        // std::cout << "T_base_aruco_init = \n" << T_base_aruco_init.matrix() << std::endl;
-
-        
-
-        T_vp_aruco.matrix().block<3,3>(0,0) = 
+        Eigen::Affine3d T_vp_aruco_base;
+        T_vp_aruco_base.matrix().block<3,3>(0,0) = 
             rot_angle(-90,'x',false)*
-            rot_angle(fixed_y_angle,'y',false)*
-            rot_angle(-M_PI_2/3.0,'x',true);
-        T_vp_aruco.matrix().block<3,1>(0,3) = Eigen::Vector3d(   cosf(270/RAD)*0.5,
+            rot_angle(-M_PI,'z',true)*
+            rot_angle(45,'x',false); //This guy is based on realsense camera
+        T_vp_aruco_base.matrix().block<3,1>(0,3) = Eigen::Vector3d(   cosf(270/RAD)*0.5,
                                                                 sinf(270/RAD)*0.5,0.5);
-        T_vp_aruco = T_base_aruco_init * T_vp_aruco;
-        ctmFk.request.fk_link_name = "realsense_fixture";
-        eigen2pose(T_vp_aruco,ps);
+        T_vp_aruco_base = T_base_aruco_init * T_vp_aruco_base;
+        eigen2pose(T_vp_aruco_base,ps);
+        ps_stamped.header.frame_id = FRAME_CAMERA;
         ps_stamped.pose = ps;
-
-
+        etmPose.request.pose = ps_stamped;
+        std::cout << etmPose.request.pose << std::endl;
+        execute_tm_pose_service.call(etmPose.request,etmPose.response);
+        
         /**
          * @brief Consider changing this block, from compute-tm-ik to [directly change the pose]
          * 
          */
-        compute_tm_ik_service.waitForExistence();
-        ctmIk.request.ik_link_name = "realsense_fixture";
-        ctmIk.request.target_pose = ps_stamped;
-        // ctmIk.request.
+        // compute_tm_ik_service.waitForExistence();
+        // ctmIk.request.ik_link_name = "realsense_fixture";
+        // ctmIk.request.target_pose = ps_stamped;
+        // compute_tm_ik_service.call(ctmIk.request,ctmIk.response);
+        // std::cout << "Error Code = " << ctmIk.response.error_code << std::endl;
+        // if( ctmIk.response.error_code == 1){
+        //     status.header.stamp = ros::Time::now();
+        //     status.item.data = "[Start] Move to Closer View";
+        //     status.value.data = "Done";
+        //     program_status_pub.publish(status);
+        //     eTMjs.request.joint_state.position = ctmIk.response.joint_state.position;
+        //     std::cout << ctmIk.response.joint_state << std::endl;
+        //     std::cout << "Call Service" << std::endl;
+        //     execute_tm_js_service.call(eTMjs.request,eTMjs.response);
 
-        compute_tm_ik_service.call(ctmIk.request,ctmIk.response);
-        std::cout << "Error Code = " << ctmIk.response.error_code << std::endl;
-        if( ctmIk.response.error_code == 1){
-            status.header.stamp = ros::Time::now();
-            status.item.data = "[Start] Move to Closer View";
-            status.value.data = "Done";
-            program_status_pub.publish(status);
-            eTMjs.request.joint_state.position = ctmIk.response.joint_state.position;
-            std::cout << ctmIk.response.joint_state << std::endl;
-            std::cout << "Call Service" << std::endl;
-            execute_tm_js_service.call(eTMjs.request,eTMjs.response);
+        //     printf("Error Code:%d, Execute Time:%f\n",eTMjs.response.error_code,eTMjs.response.executing_time);
+        //     image_check_point_pub.publish(ros::topic::waitForMessage<sensor_msgs::Image>("/camera/color/image_raw"));
+        //     status.header.stamp = ros::Time::now();
+        //     status.item.data = "[Done] Move to Closer View";
+        //     status.value.data = "Done";
+        //     program_status_pub.publish(status);
 
-            printf("Error Code:%d, Execute Time:%f\n",eTMjs.response.error_code,eTMjs.response.executing_time);
-            image_check_point_pub.publish(ros::topic::waitForMessage<sensor_msgs::Image>("/camera/color/image_raw"));
-            status.header.stamp = ros::Time::now();
-            status.item.data = "[Done] Move to Closer View";
-            status.value.data = "Done";
-            program_status_pub.publish(status);
-
-            fsm_srv.request.status = fsm_srv.request.MOVE_TO_CLOSER_ARUCO_VIEWPOINTS_DONE;
-            fsm_srv.request.header.stamp = ros::Time::now();
-            update_FSM_srv.call(fsm_srv.request,fsm_srv.response);
-            ros::Duration(0.5).sleep();
-        }else{
-            ROS_ERROR("No Closer Viewpoint Found! Aborted!");
-            return 0;
-        }
+        //     fsm_srv.request.status = fsm_srv.request.MOVE_TO_CLOSER_ARUCO_VIEWPOINTS_DONE;
+        //     fsm_srv.request.header.stamp = ros::Time::now();
+        //     update_FSM_srv.call(fsm_srv.request,fsm_srv.response);
+        //     ros::Duration(0.5).sleep();
+        // }else{
+        //     ROS_ERROR("No Closer Viewpoint Found! Aborted!");
+        //     return 0;
+        // }
 
         status.header.stamp = ros::Time::now();
         status.item.data = "[Start] Averaging ArUco Pose";
@@ -1326,7 +1338,7 @@ bool plant_scanning_service(robot_control_pkg::plant_reconstruct::Request &reque
             Aruco_PoseArray_ID::ConstPtr pose = ros::topic::waitForMessage<Aruco_PoseArray_ID>("/aruco_pose_array_stamped");
             if(pose){
                 // std::cout << *pose << std::endl;
-                printf("Taking the samples [%ld/%d]",i+1,sample_size);
+                printf("Taking the samples [%ld/%d]\r",i+1,sample_size);
                 if(pose->Aruco_PoseArray.poses[0].position.x > 10)
                     continue;
                 position_marker_avg(0) += pose->Aruco_PoseArray.poses[0].position.x;
@@ -1354,31 +1366,35 @@ bool plant_scanning_service(robot_control_pkg::plant_reconstruct::Request &reque
         std::cout << "position_marker_avg = " << position_marker_avg.matrix() << std::endl;
 
         assign_affine3d(TF_Camera_ArUco,quaternion_marker_avg,position_marker_avg);
-        geometry_msgs::PoseStamped::ConstPtr detail_viewpoint_pose = ros::topic::waitForMessage<geometry_msgs::PoseStamped>("/tool_pose");
-        // std::cout << "quaternion_marker_avg =" << *detail_viewpoint_pose << std::endl;
-
-        assign_affine3d(TF_base_tool, 
-                        Eigen::Quaterniond( detail_viewpoint_pose->pose.orientation.w,
-                                            detail_viewpoint_pose->pose.orientation.x,
-                                            detail_viewpoint_pose->pose.orientation.y,
-                                            detail_viewpoint_pose->pose.orientation.z), 
-                        Eigen::Vector3d(    detail_viewpoint_pose->pose.position.x,
-                                            detail_viewpoint_pose->pose.position.y,
-                                            detail_viewpoint_pose->pose.position.z));
-        T_base_aruco_init = TF_base_tool*TF_tool_camera*TF_Camera_ArUco;
+        try {
+            transformStamped = tfBuffer.lookupTransform(FRAME_BASE, FRAME_CAMERA, ros::Time(0));
+            // 'transformStamped.transform.translation' contains translation [x, y, z]
+            // 'transformStamped.transform.rotation' contains rotation as a quaternion [x, y, z, w]
+            ROS_INFO("Transformation from %s to %s - Translation: [%f, %f, %f], Rotation: [%f, %f, %f, %f]",
+                    FRAME_BASE, FRAME_CAMERA,
+                    transformStamped.transform.translation.x, transformStamped.transform.translation.y, transformStamped.transform.translation.z,
+                    transformStamped.transform.rotation.x, transformStamped.transform.rotation.y,
+                    transformStamped.transform.rotation.z, transformStamped.transform.rotation.w);
+            T_base_camera = convert_tf_transform(transformStamped);
+        } catch (tf2::TransformException& ex) {
+            ROS_ERROR("Failed to obtain the transformation between %s and %s: %s",  FRAME_BASE, FRAME_CAMERA, ex.what());
+            return 1;
+        }
+        T_base_aruco_init = T_base_camera*TF_Camera_ArUco;
 
 
 
         std::cout << "T_base_aruco_init = \n" << T_base_aruco_init.matrix() << std::endl;
         std::cout << "TF_Camera_ArUco = " << TF_Camera_ArUco.matrix() << std::endl;
         std::cout << "TF_base_tool = " << TF_base_tool.matrix() << std::endl;
+        return true;    
 
         sensor_msgs::PointCloud2ConstPtr pc_aruco;
         pcl::PointCloud<pcl::PointXYZRGB>::Ptr aruco_cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
         receive_pc(pc_aruco);
         pc2_PCL_Cloud(pc_aruco,aruco_cloud);
         
-        //???? Why I need this line??
+        //! Why I need this line??
         T_base_aruco_init.translation().z() += 0.045;
         T_base_aruco_init.translation().x() += 0.04;
         //2. Transfromation
@@ -1386,6 +1402,7 @@ bool plant_scanning_service(robot_control_pkg::plant_reconstruct::Request &reque
 
         sensor_msgs::JointStateConstPtr js_aruco;
         js_aruco = ros::topic::waitForMessage<sensor_msgs::JointState>("/joint_states",ros::Duration(1.0));
+        ctmFk.request.fk_link_name = "realsense_fixture";
         ctmFk.request.joint_state = *js_aruco;
         compute_tm_fk_service.call(ctmFk.request,ctmFk.response);
         Eigen::Affine3d T_realsense_base_current = pose2eigen(ctmFk.response.target_pose);
@@ -2167,6 +2184,7 @@ int main(int argc, char** argv){
     execute_tm_js_aruco_service =  nh.serviceClient<execute_tm_js_and_wait_aruco>("/exe_tm_js_wait_aruco"); // The service moving robot to given joint states
     compute_tm_ik_service = nh.serviceClient<compute_tm_ik>("/compute_tm_ik");
     compute_tm_fk_service = nh.serviceClient<compute_tm_fk>("/compute_tm_fk");
+    execute_tm_pose_service = nh.serviceClient<execute_tm_pose>("/execute_tm_pose");
 
     execute_ICP_srv = nh.serviceClient<robot_control_pkg::execute_ICP>("execute_ICP");
 
