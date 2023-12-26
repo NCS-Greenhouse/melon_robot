@@ -41,6 +41,9 @@
 #include <ctime> 
 
 #include <ros/ros.h>
+#include <tf2_ros/transform_listener.h>
+#include <tf2/convert.h>
+#include <geometry_msgs/TransformStamped.h>
 #include <moveit_msgs/GetPositionFK.h>
 #include <moveit_msgs/GetPositionFKRequest.h>
 #include <moveit_msgs/GetPositionFKResponse.h>
@@ -110,6 +113,8 @@
 #define STEM_RADIUS 0.013
 #define PETIOLE_RADIUS 0.04
 #define REPLANNING_SIZE 3
+#define FRAME_BASE "base"
+#define FRAME_CAMERA "camera_color_optical_frame"
 using namespace robot_control_pkg;
 
 const float h_l = 30.0;
@@ -125,8 +130,9 @@ ros::ServiceClient compute_tm_fk_service;
 ros::ServiceClient execute_ICP_srv;
 ros::ServiceClient check_OLD_srv;
 ros::ServiceClient update_FSM_srv;
-ros::ServiceClient plant_phonotype_sender;
+// ros::ServiceClient plant_phonotype_sender;
 ros::ServiceClient image_uploader;
+ros::ServiceClient write_item_srv;
 
 ros::Publisher program_status_pub;
 ros::Publisher image_check_point_pub;
@@ -139,11 +145,15 @@ ros::Publisher replanned_jointstates_pub;
 ros::Publisher plant_cloud_pub;
 ros::Publisher captured_cloud_pub;
 //TM Client
-ros::ServiceClient write_item_srv;
     
 pcl::visualization::PCLVisualizer::Ptr viewer (new pcl::visualization::PCLVisualizer ("Visualizer"));
 Eigen::Affine3d last_base_aruco_init;
 std::string last_marker_id;
+
+
+// Create a TF2 listener
+tf2_ros::Buffer tfBuffer;
+
 float leaf_x, leaf_y, leaf_z;
 bool leaf_selected;
 float Eucdist_XY(Eigen::Vector4d centroid, pcl::PointXYZRGB cloud_pt){
@@ -822,6 +832,25 @@ Eigen::Affine3d read_matrix(std::string path)
   return Eigen::Affine3d(mat);
 }
 
+Eigen::Affine3d convert_tf_transform(geometry_msgs::TransformStamped transformStamped){
+    Eigen::Affine3d converted_matrix;
+    Eigen::Quaterniond rotation = Eigen::Quaterniond(
+        transformStamped.transform.rotation.w,
+        transformStamped.transform.rotation.x,
+        transformStamped.transform.rotation.y,
+        transformStamped.transform.rotation.z
+    ); //wxyz
+
+    Eigen::Vector3d translation = Eigen::Vector3d(
+        transformStamped.transform.translation.x,
+        transformStamped.transform.translation.y,
+        transformStamped.transform.translation.z
+    );
+    //[Improvememt] Consider use tf to get the transformation
+    assign_affine3d(converted_matrix,rotation,translation);
+    return converted_matrix;
+}
+
 void find_regions(int arr[], int n, int threshold, std::vector<std::pair<int, int>>& regions) {
     int start = -1;
     for (int i = 0; i < n; i++) {
@@ -1025,6 +1054,7 @@ bool plant_scanning_service(robot_control_pkg::plant_reconstruct::Request &reque
     std::cout << request.plant_id << std::endl;
     std::cout << request.marker_offset << std::endl;
     std::cout << request.marker_id_str << std::endl;
+    std::cout << request.marker_id_int << std::endl;
 
     // Init Parameters
     int v1(0), v2(1);
@@ -1069,7 +1099,7 @@ bool plant_scanning_service(robot_control_pkg::plant_reconstruct::Request &reque
     geometry_msgs::PoseStamped ps_stamped;
     geometry_msgs::Pose ps;
     float fixed_y_angle = -(270 - 270);
-
+    
     std::cout << "last_marker_id == request.marker_id.data?" << (last_marker_id == request.marker_id_str.data) << std::endl;
     if(last_marker_id != request.marker_id_str.data){
         eTMjs.request.joint_state.position = init_js_greenhouse;
@@ -1102,7 +1132,7 @@ bool plant_scanning_service(robot_control_pkg::plant_reconstruct::Request &reque
         // Control the robot, scanning the target region and stop if ArUco marker(s) has been detected.
         robot_control_pkg::execute_tm_js_and_wait_aruco eTMjsArUco;
         eTMjsArUco.request.joint_state.position = init_js_greenhouse; //set starting joint states
-        eTMjsArUco.request.target_id = 0; //Figure out this variable
+        eTMjsArUco.request.target_id = request.marker_id_int.data; 
         execute_tm_js_aruco_service.call(eTMjsArUco.request,eTMjsArUco.response);
         
         //why not change the service and return the required pose??????
@@ -1147,8 +1177,10 @@ bool plant_scanning_service(robot_control_pkg::plant_reconstruct::Request &reque
                         #pragma endregion
 
                         ros::Duration(0.5).sleep();
-                        std::cout << "position_marker = " << position_marker.matrix()<<std::endl;
-                        std::cout << "quaternion_marker = " << quaternion_marker.matrix()<<std::endl;
+                        position_marker.setIdentity();
+                        quaternion_marker.setIdentity();
+                        // std::cout << "position_marker = \n" << position_marker.matrix()<<std::endl;
+                        // std::cout << "quaternion_marker = \n" << quaternion_marker.matrix()<<std::endl;
                         position_marker(0) = pose->Aruco_PoseArray.poses[marker_index].position.x;
                         position_marker(1) = pose->Aruco_PoseArray.poses[marker_index].position.y;
                         position_marker(2) = pose->Aruco_PoseArray.poses[marker_index].position.z;
@@ -1178,6 +1210,7 @@ bool plant_scanning_service(robot_control_pkg::plant_reconstruct::Request &reque
                             assign_affine3d(TF_base_tool, quaternion_tool_pose, position_tool_pose);
                         }
                     }
+                    break;
                 }
                 
             }
@@ -1200,16 +1233,36 @@ bool plant_scanning_service(robot_control_pkg::plant_reconstruct::Request &reque
             return true;
         }
         
-        return;
 
-
-
-
-        Eigen::Affine3d T_base_aruco_init = TF_base_tool*TF_tool_camera*TF_Camera_ArUco;
-        std::cout << "TF_base_tool = \n" << TF_base_tool.matrix() << std::endl;
-        std::cout << "TF_tool_camera = \n" << TF_tool_camera.matrix() << std::endl;
-        std::cout << "TF_Camera_ArUco = \n" << TF_Camera_ArUco.matrix() << std::endl;
+        Eigen::Affine3d T_base_camera;
+        geometry_msgs::TransformStamped transformStamped;
+        try {
+            transformStamped = tfBuffer.lookupTransform(FRAME_BASE, FRAME_CAMERA, ros::Time(0));
+            // 'transformStamped.transform.translation' contains translation [x, y, z]
+            // 'transformStamped.transform.rotation' contains rotation as a quaternion [x, y, z, w]
+            ROS_INFO("Transformation from %s to %s - Translation: [%f, %f, %f], Rotation: [%f, %f, %f, %f]",
+                    FRAME_BASE, FRAME_CAMERA,
+                    transformStamped.transform.translation.x, transformStamped.transform.translation.y, transformStamped.transform.translation.z,
+                    transformStamped.transform.rotation.x, transformStamped.transform.rotation.y,
+                    transformStamped.transform.rotation.z, transformStamped.transform.rotation.w);
+            T_base_camera = convert_tf_transform(transformStamped);
+        } catch (tf2::TransformException& ex) {
+            ROS_ERROR("Failed to obtain the transformation between %s and %s: %s",  FRAME_BASE, FRAME_CAMERA, ex.what());
+            return 1;
+        }
+        Eigen::Affine3d T_base_aruco_init = T_base_camera * TF_Camera_ArUco;
+        std::cout << "T_base_camera = \n" << T_base_camera.matrix() << std::endl;
         std::cout << "T_base_aruco_init = \n" << T_base_aruco_init.matrix() << std::endl;
+
+        return true;
+
+        // std::cout << "TF_base_tool = \n" << TF_base_tool.matrix() << std::endl;
+        // std::cout << "TF_tool_camera = \n" << TF_tool_camera.matrix() << std::endl;
+        // std::cout << "TF_Camera_ArUco = \n" << TF_Camera_ArUco.matrix() << std::endl;
+        // std::cout << "T_base_aruco_init = \n" << T_base_aruco_init.matrix() << std::endl;
+
+        
+
         T_vp_aruco.matrix().block<3,3>(0,0) = 
             rot_angle(-90,'x',false)*
             rot_angle(fixed_y_angle,'y',false)*
@@ -1658,7 +1711,7 @@ bool plant_scanning_service(robot_control_pkg::plant_reconstruct::Request &reque
     phonotype_sender_obj.request.plant_id = request.plant_id;
     phonotype_sender_obj.request.height = (last_height * 100.0);
     phonotype_sender_obj.request.node_number = 0;
-    plant_phonotype_sender.call(phonotype_sender_obj.request,phonotype_sender_obj.response);
+    // plant_phonotype_sender.call(phonotype_sender_obj.request,phonotype_sender_obj.response);
 
     if(phonotype_sender_obj.response.result.data = true){
         ROS_INFO("Phonotype Sent.");
@@ -2106,6 +2159,7 @@ int main(int argc, char** argv){
     last_base_aruco_init.setIdentity();
     last_marker_id = "";
     ros::init(argc, argv, "plant_scanning_node");
+
     viewer->createViewPort(0.0,0.0,0.5,1.0,v1);
     viewer->createViewPort(0.5,0.0,1.0,1.0,v2);
     ros::NodeHandle nh; //Node handler
@@ -2122,7 +2176,7 @@ int main(int argc, char** argv){
     
     write_item_srv = nh.serviceClient<tm_msgs::WriteItem>("/tm_driver/write_item");
     
-    plant_phonotype_sender = nh.serviceClient<robot_control_pkg::plant_phonotype_info>("/plant_info_service");
+    // plant_phonotype_sender = nh.serviceClient<robot_control_pkg::plant_phonotype_info>("/plant_info_service");
 
     image_uploader = nh.serviceClient<robot_control_pkg::upload_img>("/upload_img");
 
@@ -2147,20 +2201,28 @@ int main(int argc, char** argv){
     image_uploader.waitForExistence();
     ROS_INFO("Waiting for \"ICP Regisetring\" Service");
     execute_ICP_srv.waitForExistence();
-    ROS_INFO("Waiting for \"Occluding Checking\" Service");
-    check_OLD_srv.waitForExistence();
+    // ROS_INFO("Waiting for \"Occluding Checking\" Service");
+    // check_OLD_srv.waitForExistence();
     ROS_INFO("Waiting for \"FSM Updating\" Service");
     update_FSM_srv.waitForExistence();
     ROS_INFO("Waiting for \"TM Driver\" Service");
     // write_item_srv.waitForExistence();
-    plant_phonotype_sender.waitForExistence();
-    ROS_INFO("Waiting for \"plant_phonotype_sender\" Service");
+    // plant_phonotype_sender.waitForExistence();
+    // ROS_INFO("Waiting for \"plant_phonotype_sender\" Service");
 
     ROS_INFO("All Service Loaded.");
     ros::ServiceServer execute_plant_reconstruct_service = nh.advertiseService
         ("plant_reconstruct_srv",plant_scanning_service);
     #pragma endregion
-
+    
+    tf2_ros::TransformListener tfListener(tfBuffer);
+    // Wait for the transformation to become available
+    try {
+        tfBuffer.canTransform(FRAME_BASE, FRAME_CAMERA, ros::Time(0), ros::Duration(4.0));
+    } catch (tf2::TransformException& ex) {
+        ROS_ERROR("Failed to obtain the transformation between %s and %s: %s", FRAME_BASE, FRAME_CAMERA, ex.what());
+        return 1;
+    }
     ros::spin();
     // git submodule add -b noetic-devel https://github.com/machinekoder/ar_track_alvar.git  src/ar_track_alvar
 }
