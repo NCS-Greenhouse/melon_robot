@@ -11,7 +11,7 @@
 from datetime import datetime
 from datetime import timedelta
 from tabulate import tabulate
-import time, rospy, os, signal, sys
+import time, rospy, os, signal, sys, subprocess
 import tm_msgs.srv._WriteItem as WriteItem
 import numpy as np
 from geometry_msgs.msg import Point
@@ -28,14 +28,27 @@ from advantech_utils import datahub_send_data, datahub_api_send_get
 class Marker_server():
     def __init__(self) -> None:
         rospy.init_node("marker_scheduling_node",anonymous=False)
-        self.root_path = './greenhouse_db/'
+
+        self.root_path = rospack.get_path("robot_control_pkg").replace('src/robot_control_pkg','greenhouse_db')
         self.curr_day_str = str(datetime.now().year) + "_" + str(datetime.now().month) + "_" + str(datetime.now().day)
         self.current_data_folder = self.root_path + self.curr_day_str
         self.data_path = self.current_data_folder + "/table_db_" + self.curr_day_str +".csv"
         self.schedule_time_path = self.current_data_folder + "/schedule_time_db_" + self.curr_day_str +".csv"
         self.finish_time_path = self.current_data_folder + "/finish_time_db_" + self.curr_day_str +".csv"
         
-        self.plant_size = 1
+
+
+        # self.plant_id = ["D33","D31"]
+
+        # self.marker = {"m321":{"D33":Point(-0.43,0,0)},
+        #                 "m311":{"D31":Point(0.25,0,0)}}
+
+        self.plant_id = ["D31","D32"]
+        self.marker_index = {"m311":"9"}
+        # self.marker
+        self.marker = {"m311":{"D31":Point(0.3, 0,0), "D32":Point(-0.3, 0,0)}}
+        # self.marker = {"m311":{"D31":Point(0.3, 0,0)}}
+        self.plant_size = len(self.plant_id)
         self.empty_data = []
         for i in range(self.plant_size):
             self.empty_data.append(0)
@@ -43,17 +56,6 @@ class Marker_server():
         self.scheduled_time_log = []
         self.finished_time_log = []
         self.empty_log = [self.empty_data]
-
-        # self.plant_id = ["D33","D31"]
-
-        # self.marker_index = ["m321","m311"]
-
-        # self.marker = {"m321":{"D33":Point(-0.43,0,0)},
-        #                 "m311":{"D31":Point(0.25,0,0)}}
-
-        self.plant_id = ["D31","D32"]
-        self.marker_index = ["m311"]
-        self.marker = {"m311":{"D31":Point(0.3, 0,0), "D32":Point(-0.3, 0,0)}}
 
         self.init_folder()
         self.read_database() #create data set if not exist dataset
@@ -164,6 +166,7 @@ class Marker_server():
         return [-1, mintime]
 
     def delete_dataset(self):
+        rospy.logwarn(f"Delecting dict: {self.data_path}")
         with open(self.data_path, 'w', newline='') as csvfile:
             # 建立 CSV 檔寫入器
             writer = csv.writer(csvfile)
@@ -215,21 +218,6 @@ class Marker_server():
             return True
         else:
             return False
- 
-def signal_handler(signum, frame):
-    '''
-    Disconnect with server and exit the main thread
-    '''
-    print('signal_handler: caught signal ' + str(signum))
-    if signum == signal.SIGINT.value:
-        # print('SIGINT')
-        datahub.send_single([0],device_id=hyp['device_id']['ugv_bridge'],tag_name='Arm_Requests_B')
-        datahub.close_connection()
-        datahub_get_ugv_power.close_connection()
-        datahub_get_ugv_reach.close_connection()
-        datahub_get_ugv_marker_id.close_connection()
-        sys.exit(1)
-
 def homing_robot_arm()->bool:
     js_home = JointState()
     js_home.position = [0,0,0,0,0,0]
@@ -242,7 +230,6 @@ def homing_robot_arm()->bool:
         return False     
 
 def robot_light_control(state:bool)->bool:
-
     wreq = WriteItemRequest()
     wreq.id = '0'
     wreq.item = "Camera_Light"
@@ -252,13 +239,31 @@ def robot_light_control(state:bool)->bool:
         return True
     else:
         return False 
+def signal_handler(signum, frame):
+    '''
+    Disconnect with server and exit the main thread
+    '''
+    print('signal_handler: caught signal ' + str(signum))
+    if signum == signal.SIGINT.value:
+        # print('SIGINT')
+        datahub.send_single([0],device_id=hyp['device_id']['ugv_bridge'],tag_name='Arm_Requests_B')
+
+        # os.system("rosservice call /tm_driver/write_item id:'0' item:'Camera_Light' value:'0'")
+        # subprocess.call("rosservice call /tm_driver/write_item id:'0' item:'Camera_Light' value:'0'",shell=True)
+
+        datahub.close_connection()
+        datahub_get_ugv_power.close_connection()
+        datahub_get_ugv_reach.close_connection()
+        datahub_get_ugv_marker_id.close_connection()
+        sys.exit(1)
+
+
     
 if __name__ == '__main__':
     '''
     This is the main loop
     '''
     signal.signal(signal.SIGINT, signal_handler) #Assign handler function for Ctrl+C 
-
     # Credentials Verification
     conf = configparser.ConfigParser() 
     rospack = rospkg.RosPack()
@@ -284,9 +289,12 @@ if __name__ == '__main__':
         'credential_key': conf.get('forge.datahub', 'credential')
     }
     datahub = datahub_send_data(hyp)
-    #region Initialization of Marker System Class, ROS node and wating for critical services
+    #Initialization of Marker System Class, ROS node and wating for critical services
     MS = Marker_server()
-    # MS.delete_dataset() #Optional run this code to refresh today's work
+    rospy.loginfo("==========================INITIALIZATION STAGE START==========================")
+
+    
+    MS.delete_dataset() #Optional run this code to refresh today's work
 
     exe_tm_js = rospy.ServiceProxy("/execute_tm_js",execute_tm_js)
     tm_write_item = rospy.ServiceProxy("/tm_driver/write_item",WriteItem)
@@ -300,7 +308,7 @@ if __name__ == '__main__':
     tm_write_item.wait_for_service()
 
     rospy.loginfo("Waiting for Service /plant_reconstruct_srv")
-    plant_reconstruct_service.wait_for_service()
+    # plant_reconstruct_service.wait_for_service()
 
     # Continue until the datahub is connected.
     while(not datahub.check_connection()):
@@ -336,10 +344,12 @@ if __name__ == '__main__':
             quit()
     
     rospy.loginfo(f"UGV Power is powered {'ON.' if datahub_get_ugv_power.read_last_data(0) == 1 else 'OFF.'}")
+    rospy.loginfo("==========================INITIALIZATION STAGE END==========================")
+    rospy.loginfo("")
 
     # Homing the robotic manipulator and turn on operating light
-    homing_robot_arm()
-    robot_light_control(True)
+    # homing_robot_arm()
+    robot_light_control(False)
     
     while(True):
         rospy.loginfo("Start Scheduling.")
@@ -368,6 +378,7 @@ if __name__ == '__main__':
         # Move the Arm into sfaety position BEFROE the UGV moves (optional, automatically needed)
 
         # Restore the arm into safe pose
+        rospy.loginfo("==========================UGV MOVING STAGE START==========================")
         rospy.loginfo(f"Setting the Target Marker ID to {schedule_result}.")
         rospy.loginfo("Set parameter \"ArmRequest\"on advantech to 1")
         datahub.send_single([str(schedule_result)],device_id=hyp['device_id']['ugv_bridge'],tag_name='UGV_Target_Marker_ID_B')
@@ -386,6 +397,7 @@ if __name__ == '__main__':
         datahub.send_single([0],device_id=hyp['device_id']['ugv_bridge'],tag_name='Arm_Requests_B')
         datahub.send_single([0],device_id=hyp['device_id']['ugv_bridge'],tag_name='UGV_Reach_Target_Position_B')        
         rospy.loginfo("[UGV] Target Position  (Marker: %s) Reached,", str(schedule_result))
+        rospy.loginfo("==========================UGV MOVING STAGE END==========================")
 
         failure_cases = [] #define a list storing the failure cases for rolling back 
         for marker in MS.marker[schedule_result]:
@@ -403,13 +415,18 @@ if __name__ == '__main__':
                 plant_reconstruct_req.marker_offset = marker_offset
                 plant_reconstruct_req.folder_path.data = str(case_folder_root)
                 plant_reconstruct_req.marker_id_str.data = str(schedule_result)
-                plant_reconstruct_req.marker_id_int.data = 0 #Please change this variable to connect the CPP file!!!!!
+                plant_reconstruct_req.marker_id_int.data = int(MS.marker_index[schedule_result]) #Please change this variable to connect the CPP file!!!!!
+                print(plant_reconstruct_req)
                 rospy.loginfo("Waiting for plant reconstruct service...")
                 plant_reconstruct_service.wait_for_service()
                 plant_reconstruct_res:plant_reconstructResponse = plant_reconstruct_service.call(plant_reconstruct_req)
 
+                # plant_reconstruct_res = plant_reconstructResponse()
+                # plant_reconstruct_res.Success.data = True
+
+
                 # print(plant_reconstruct_req)
-                print(plant_reconstruct_res)
+                # print(plant_reconstruct_res)
 
                 #Log the Failure case into a list and change the flag (timestamp) back after all plant is scanned.
                 # if(plant_reconstruct_res.Success.data == True):
@@ -417,6 +434,7 @@ if __name__ == '__main__':
                 # if(plant_reconstruct_res.Success.data == False):
                 #     failure_cases.append([plant_col,plant_next_index])
                 if(plant_reconstruct_res.Success.data == True):
+                    print(plant_col,plant_next_index)
                     MS.log_operation(plant_col,plant_next_index)
                 else:
                     rospy.logwarn("The Marker %s not found!", str(schedule_result))
