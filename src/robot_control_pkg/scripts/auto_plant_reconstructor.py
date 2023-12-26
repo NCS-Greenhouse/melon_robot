@@ -29,7 +29,7 @@ class Marker_server():
     def __init__(self) -> None:
         rospy.init_node("marker_scheduling_node",anonymous=False)
 
-        self.root_path = rospack.get_path("robot_control_pkg").replace('src/robot_control_pkg','greenhouse_db')
+        self.root_path = rospack.get_path("robot_control_pkg").replace('src/robot_control_pkg','greenhouse_db/')
         self.curr_day_str = str(datetime.now().year) + "_" + str(datetime.now().month) + "_" + str(datetime.now().day)
         self.current_data_folder = self.root_path + self.curr_day_str
         self.data_path = self.current_data_folder + "/table_db_" + self.curr_day_str +".csv"
