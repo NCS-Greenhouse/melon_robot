@@ -7,3 +7,6 @@
 [submodule "src/hrl-kdl"]
 	path = src/hrl-kdl
 	url = https://github.com/NCS-Greenhouse/hrl-kdl.git
+[submodule "src/realsense-ros"]
+	path = src/realsense-ros
+	url = https://github.com/NCS-Greenhouse/realsense-ros.git
