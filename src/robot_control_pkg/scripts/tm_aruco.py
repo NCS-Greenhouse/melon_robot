@@ -43,7 +43,7 @@ class ArUcoMarker_Handler:
 
 
         # Initialize ROS node
-        self.init_node = rospy.init_node('Aruco_Detector')
+        self.init_node = rospy.init_node('aruco_detector')
 
         # Set camera parameters
         self.simulation = False # Gazebo usage
@@ -93,8 +93,11 @@ class ArUcoMarker_Handler:
             return mtx,dist
         if camera == "color":
             if (w == 640 and h == 480):
-                mtx = np.array([[595.70417713,0.0,315.87023748],[0.0,595.65448887,245.48844577],[0.0,0.0,1.0]])
-                dist = np.array([[6.30763820e-03,6.14597299e-01,7.01498672e-04,-6.21786285e-03,-2.10081384e+00]])
+                # mtx = np.array([[595.70417713,0.0,315.87023748],[0.0,595.65448887,245.48844577],[0.0,0.0,1.0]])
+                mtx = np.array([[595.70417713,0.0,327],[0.0,595.65448887,240],[0.0,0.0,1.0]])
+                # mtx = np.array([[669.65,0.0,327.3658],[0.0,670.7647,240.4148],[0.0,0.0,1.0]])
+                # dist = np.array([[6.30763820e-03,6.14597299e-01,7.01498672e-04,-6.21786285e-03,-2.10081384e+00]])
+                dist = np.array([[0.1520, -0.2727, 0.0, 0.0, 0.0]])
             elif(w==1280 and h == 720):
                 mtx = np.array([[ 907.93641823,0.,656.99437432],[0.,907.65239766,349.74841074],[0.,0.,1.]])
                 dist = np.array([[ 0.14022919,-0.46522043,-0.00670384,0.00170763,0.41150515]])     
