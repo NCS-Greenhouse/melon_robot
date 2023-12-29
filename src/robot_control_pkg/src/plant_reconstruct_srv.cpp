@@ -347,6 +347,24 @@ void receive_pc(sensor_msgs::PointCloud2ConstPtr &pc2, std::string topic_name = 
 
 }
 
+void receive_pc_organized(sensor_msgs::PointCloud2ConstPtr &pc2, std::string topic_name = "/camera/depth_registered/points"){
+    // ROS_INFO("Waiting For Realsense PointCloud");
+
+    for (size_t pc2_i = 0; pc2_i < 30; pc2_i++)
+    {
+        /* code */
+        pc2 = ros::topic::waitForMessage<sensor_msgs::PointCloud2>(topic_name.c_str(),ros::Duration(5.0));            
+        
+        if(pc2){
+            break;
+        }
+    }
+    if(pc2)
+        ROS_INFO("PointCloud Received.");
+
+
+}
+
 pcl::PointIndices::Ptr get_dist_filter_inliers(pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud,float threshold){
     pcl::PointIndices::Ptr inliers (new pcl::PointIndices());
     float threshold2 = threshold * threshold;
@@ -1078,7 +1096,8 @@ bool plant_scanning_service(robot_control_pkg::plant_reconstruct::Request &reque
         0.8786732500486015,
         1.7707593777693327,
         -0.18170818025589258};
-    
+    geometry_msgs::TransformStamped transformStamped;
+
     // Turn on the light of TM Robot
     item.request.id = std::to_string(0);
     item.request.item = "Camera_Light";
@@ -1184,8 +1203,6 @@ bool plant_scanning_service(robot_control_pkg::plant_reconstruct::Request &reque
                         ros::Duration(0.5).sleep();
                         position_marker.setIdentity();
                         quaternion_marker.setIdentity();
-                        // std::cout << "position_marker = \n" << position_marker.matrix()<<std::endl;
-                        // std::cout << "quaternion_marker = \n" << quaternion_marker.matrix()<<std::endl;
                         position_marker(0) = pose->Aruco_PoseArray.poses[marker_index].position.x;
                         position_marker(1) = pose->Aruco_PoseArray.poses[marker_index].position.y;
                         position_marker(2) = pose->Aruco_PoseArray.poses[marker_index].position.z;
@@ -1203,17 +1220,6 @@ bool plant_scanning_service(robot_control_pkg::plant_reconstruct::Request &reque
                             pose->Aruco_PoseArray.poses[marker_index].orientation.z);
                         assign_affine3d(TF_Camera_ArUco,quaternion_marker,position_marker);
                         std::cout << "TF_Camera_ArUco = " << TF_Camera_ArUco.matrix() << std::endl;
-                        // initial_robot_pose = ros::topic::waitForMessage<geometry_msgs::PoseStamped>("/tool_pose"); //[BUG] Is that accurate???
-                        // if(initial_robot_pose){
-                        //     Eigen::Quaterniond quaternion_tool_pose = Eigen::Quaterniond(   initial_robot_pose->pose.orientation.w,
-                        //                                                                     initial_robot_pose->pose.orientation.x,
-                        //                                                                     initial_robot_pose->pose.orientation.y,
-                        //                                                                     initial_robot_pose->pose.orientation.z);
-                        //     Eigen::Vector3d position_tool_pose = Eigen::Vector3d(   initial_robot_pose->pose.position.x,
-                        //                                                             initial_robot_pose->pose.position.y,
-                        //                                                             initial_robot_pose->pose.position.z);
-                        //     assign_affine3d(TF_base_tool, quaternion_tool_pose, position_tool_pose);
-                        // }
                     }
                     break;
                 }
@@ -1240,7 +1246,6 @@ bool plant_scanning_service(robot_control_pkg::plant_reconstruct::Request &reque
         
 
         Eigen::Affine3d T_base_camera;
-        geometry_msgs::TransformStamped transformStamped;
         try {
             transformStamped = tfBuffer.lookupTransform(FRAME_BASE, FRAME_CAMERA, ros::Time(0));
             // 'transformStamped.transform.translation' contains translation [x, y, z]
@@ -1259,26 +1264,11 @@ bool plant_scanning_service(robot_control_pkg::plant_reconstruct::Request &reque
         std::cout << "T_base_camera = \n" << T_base_camera.matrix() << std::endl;
         std::cout << "T_base_aruco_init = \n" << T_base_aruco_init.matrix() << std::endl;        
 
-        // T_vp_aruco.matrix().block<3,3>(0,0) = 
-        //     rot_angle(-90,'x',false)*
-        //     rot_angle(fixed_y_angle,'y',false)*
-        //     rot_angle(-M_PI_2/3.0,'x',true); //This guy is based on realsense camera
-        // T_vp_aruco.matrix().block<3,1>(0,3) = Eigen::Vector3d(   cosf(270/RAD)*0.5,
-        //                                                         sinf(270/RAD)*0.5,0.5);
-        // T_vp_aruco = T_base_aruco_init * T_vp_aruco;
-        // eigen2pose(T_vp_aruco,ps);
-        // ps_stamped.pose = ps;
-        // ps_stamped.header.frame_id = FRAME_CAMERA;
-        // //try to use the pose control
-        // etmPose.request.pose = ps_stamped;
-        // std::cout << etmPose.request.pose << std::endl;
-        // execute_tm_pose_service.call(etmPose.request,etmPose.response);
-
         Eigen::Affine3d T_vp_aruco_base;
         T_vp_aruco_base.matrix().block<3,3>(0,0) = 
             rot_angle(-90,'x',false)*
             rot_angle(-M_PI,'z',true)*
-            rot_angle(45,'x',false); //This guy is based on realsense camera
+            rot_angle(60,'x',false); //This guy is based on realsense camera
         T_vp_aruco_base.matrix().block<3,1>(0,3) = Eigen::Vector3d(   cosf(270/RAD)*0.5,
                                                                 sinf(270/RAD)*0.5,0.5);
         T_vp_aruco_base = T_base_aruco_init * T_vp_aruco_base;
@@ -1293,44 +1283,14 @@ bool plant_scanning_service(robot_control_pkg::plant_reconstruct::Request &reque
          * @brief Consider changing this block, from compute-tm-ik to [directly change the pose]
          * 
          */
-        // compute_tm_ik_service.waitForExistence();
-        // ctmIk.request.ik_link_name = "realsense_fixture";
-        // ctmIk.request.target_pose = ps_stamped;
-        // compute_tm_ik_service.call(ctmIk.request,ctmIk.response);
-        // std::cout << "Error Code = " << ctmIk.response.error_code << std::endl;
-        // if( ctmIk.response.error_code == 1){
-        //     status.header.stamp = ros::Time::now();
-        //     status.item.data = "[Start] Move to Closer View";
-        //     status.value.data = "Done";
-        //     program_status_pub.publish(status);
-        //     eTMjs.request.joint_state.position = ctmIk.response.joint_state.position;
-        //     std::cout << ctmIk.response.joint_state << std::endl;
-        //     std::cout << "Call Service" << std::endl;
-        //     execute_tm_js_service.call(eTMjs.request,eTMjs.response);
-
-        //     printf("Error Code:%d, Execute Time:%f\n",eTMjs.response.error_code,eTMjs.response.executing_time);
-        //     image_check_point_pub.publish(ros::topic::waitForMessage<sensor_msgs::Image>("/camera/color/image_raw"));
-        //     status.header.stamp = ros::Time::now();
-        //     status.item.data = "[Done] Move to Closer View";
-        //     status.value.data = "Done";
-        //     program_status_pub.publish(status);
-
-        //     fsm_srv.request.status = fsm_srv.request.MOVE_TO_CLOSER_ARUCO_VIEWPOINTS_DONE;
-        //     fsm_srv.request.header.stamp = ros::Time::now();
-        //     update_FSM_srv.call(fsm_srv.request,fsm_srv.response);
-        //     ros::Duration(0.5).sleep();
-        // }else{
-        //     ROS_ERROR("No Closer Viewpoint Found! Aborted!");
-        //     return 0;
-        // }
-
         status.header.stamp = ros::Time::now();
         status.item.data = "[Start] Averaging ArUco Pose";
         program_status_pub.publish(status);
 
         Eigen::Vector3d position_marker_avg; //averaged position
         Eigen::Quaterniond quaternion_marker_avg = Eigen::Quaterniond(0,0,0,0);
-        int sample_size = 10; //Take how much messages total
+        //! Is this function is correct? The average of quaternion is correct or not?
+        int sample_size = 1; //Take how much messages total
         int actual_sample_ctr = 0; //The real valid samples, may be equal or less than execpted
         position_marker_avg.setZero();
         for (size_t i = 0; i < sample_size; i++)
@@ -1338,7 +1298,7 @@ bool plant_scanning_service(robot_control_pkg::plant_reconstruct::Request &reque
             Aruco_PoseArray_ID::ConstPtr pose = ros::topic::waitForMessage<Aruco_PoseArray_ID>("/aruco_pose_array_stamped");
             if(pose){
                 // std::cout << *pose << std::endl;
-                printf("Taking the samples [%ld/%d]\r",i+1,sample_size);
+                printf("Taking the samples [%ld/%d]\n",i+1,sample_size);
                 if(pose->Aruco_PoseArray.poses[0].position.x > 10)
                     continue;
                 position_marker_avg(0) += pose->Aruco_PoseArray.poses[0].position.x;
@@ -1353,6 +1313,7 @@ bool plant_scanning_service(robot_control_pkg::plant_reconstruct::Request &reque
                 // std::cout << "quaternion_marker_avg =" << quaternion_marker_avg.matrix() << std::endl;
             }
         }
+
         printf("\n");
         position_marker_avg.matrix() /= actual_sample_ctr;
         quaternion_marker_avg.w() /= actual_sample_ctr;
@@ -1386,33 +1347,23 @@ bool plant_scanning_service(robot_control_pkg::plant_reconstruct::Request &reque
 
         std::cout << "T_base_aruco_init = \n" << T_base_aruco_init.matrix() << std::endl;
         std::cout << "TF_Camera_ArUco = " << TF_Camera_ArUco.matrix() << std::endl;
-        std::cout << "TF_base_tool = " << TF_base_tool.matrix() << std::endl;
-        return true;    
+        // std::cout << "TF_base_tool = " << TF_base_tool.matrix() << std::endl;
 
         sensor_msgs::PointCloud2ConstPtr pc_aruco;
         pcl::PointCloud<pcl::PointXYZRGB>::Ptr aruco_cloud (new pcl::PointCloud<pcl::PointXYZRGB>);
-        receive_pc(pc_aruco);
+        receive_pc_organized(pc_aruco);
         pc2_PCL_Cloud(pc_aruco,aruco_cloud);
         
-        //! Why I need this line??
-        T_base_aruco_init.translation().z() += 0.045;
-        T_base_aruco_init.translation().x() += 0.04;
-        //2. Transfromation
-        //2.1 point cloud from realsense_fixture to base
-
-        sensor_msgs::JointStateConstPtr js_aruco;
-        js_aruco = ros::topic::waitForMessage<sensor_msgs::JointState>("/joint_states",ros::Duration(1.0));
-        ctmFk.request.fk_link_name = "realsense_fixture";
-        ctmFk.request.joint_state = *js_aruco;
-        compute_tm_fk_service.call(ctmFk.request,ctmFk.response);
-        Eigen::Affine3d T_realsense_base_current = pose2eigen(ctmFk.response.target_pose);
-        pcl::transformPointCloud(*aruco_cloud,*aruco_cloud,T_realsense_base_current);
-        pcl::transformPointCloud(*aruco_cloud,*aruco_cloud,T_base_aruco_init.inverse());
+        //? Why I need this line??
+        //! Camera parameter is not accurate! Manually changed. 
+        pcl::transformPointCloud(*aruco_cloud,*aruco_cloud,TF_Camera_ArUco.inverse());
+        // pcl::transformPointCloud(*aruco_cloud,*aruco_cloud,T_base_aruco_init.inverse());
 
         viewer->addCoordinateSystem(0.1);
         viewer->removePointCloud("aruco_cloud");
         viewer->addPointCloud(aruco_cloud,"aruco_cloud",v1);
         viewer->spin();
+        // return true;    
 
         Eigen::Affine3d TF_ArUco_root;
         TF_ArUco_root.setIdentity();
@@ -1474,7 +1425,7 @@ bool plant_scanning_service(robot_control_pkg::plant_reconstruct::Request &reque
     int first_stage_cloud_ctr = 0;
     float last_height = 0.0;
     int height_search_iteration = 0;
-    for (float h = 0.2; h < 1.8; h += search_interval)
+    for (float h = 0.7; h < 1.8; h += search_interval)
     {
         Eigen::Affine3d T_vp_root, T_vp_base;
         float x_rot_ang = (h<=0.4?(-37*h + 22):(h>0.81?-(45*(h-0.3) - 24):0.0));
@@ -1485,233 +1436,211 @@ bool plant_scanning_service(robot_control_pkg::plant_reconstruct::Request &reque
         // }else{
         //     fixed_y_angle = online_occluding_optimizer(cloud_global, h, search_interval);
         // }
+        // T_vp_root.matrix().block<3,3>(0,0) = 
+        //     rot_angle(-90,'x',false)*
+        //     rot_angle(fixed_y_angle,'y',false)*
+        //     rot_angle(-x_rot_ang,'x',false);
+
         T_vp_root.matrix().block<3,3>(0,0) = 
             rot_angle(-90,'x',false)*
-            rot_angle(fixed_y_angle,'y',false)*
-            rot_angle(-x_rot_ang,'x',false);
-        // float radii = (h>1.05?1.0:0.65);
+            rot_angle(-M_PI,'z',true)*
+            rot_angle(x_rot_ang,'x',false);
+
         float radii = (h>0.8?1.3:start_radius); //0.8 height
         // radii = 0.8;
-        // float radii = start_radius;
         T_vp_root.matrix().block<3,1>(0,3) = Eigen::Vector3d(   cosf(270/RAD)*radii,
                                                                 sinf(270/RAD)*radii,adjusted_h);
         T_vp_base = T_base_root * T_vp_root;
-        eigen2pose(T_vp_base,ps);
-        // std::cout << "height = " <<adjusted_h << "\n Pose = " << ps<<std::endl;
-        ps_stamped.pose = ps;
-        compute_tm_ik_service.waitForExistence();
-        ctmIk.request.ik_link_name = "realsense_fixture";
-        ctmIk.request.target_pose = ps_stamped;
-        compute_tm_ik_service.call(ctmIk.request,ctmIk.response);
+
         pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_local (new pcl::PointCloud<pcl::PointXYZRGB>); // container for receiving stem cloud
         ROS_INFO_STREAM("h = "+ std::to_string(adjusted_h) + 
             "\t x_rot_ang = "+ std::to_string(x_rot_ang) + 
             "\t Error Code = " + std::to_string(ctmIk.response.error_code));
+        
+        T_vp_base = T_base_root * T_vp_root;
+        eigen2pose(T_vp_base,ps);
+        ps_stamped.header.frame_id = FRAME_CAMERA;
+        ps_stamped.pose = ps;
+        etmPose.request.pose = ps_stamped;
+        std::cout << etmPose.request.pose << std::endl;
+        execute_tm_pose_service.call(etmPose.request,etmPose.response); //We assume that this function works well.
 
-        if(ctmIk.response.error_code == 1){
-            fsm_srv.request.status = fsm_srv.request.HEADON_VIEWPOINTS_PLANNING_SUCCESS;
-            fsm_srv.request.header.stamp = ros::Time::now();
-            update_FSM_srv.call(fsm_srv.request,fsm_srv.response);
-            ros::Duration(2).sleep();
-            eTMjs.request.joint_state.position = ctmIk.response.joint_state.position;
-            execute_tm_js_service.call(eTMjs.request,eTMjs.response); //move to this target
-
-            fsm_srv.request.status = fsm_srv.request.HEADON_VIEWPOINTS_MOVING_DONE;
-            fsm_srv.request.header.stamp = ros::Time::now();
-            update_FSM_srv.call(fsm_srv.request,fsm_srv.response);
+        // fsm_srv.request.status = fsm_srv.request.HEADON_VIEWPOINTS_PLANNING_SUCCESS;
+        // fsm_srv.request.header.stamp = ros::Time::now();
+        // update_FSM_srv.call(fsm_srv.request,fsm_srv.response);
+        fsm_srv.request.status = fsm_srv.request.HEADON_VIEWPOINTS_MOVING_DONE;
+        fsm_srv.request.header.stamp = ros::Time::now();
+        update_FSM_srv.call(fsm_srv.request,fsm_srv.response);
+        status.header.stamp = ros::Time::now();
+        status.item.data = "Rough Search, Height:" + std::to_string(adjusted_h);
+        program_status_pub.publish(status);
+        image_check_point_pub.publish(ros::topic::waitForMessage<sensor_msgs::Image>("/camera/color/image_raw"));
             
-            // printf("Error Code:%d, Execute Time:%f\n",eTMjs.response.error_code,eTMjs.response.executing_time);
-            status.header.stamp = ros::Time::now();
-            status.item.data = "Rough Search, Height:" + std::to_string(adjusted_h);
-            program_status_pub.publish(status);
-            image_check_point_pub.publish(ros::topic::waitForMessage<sensor_msgs::Image>("/camera/color/image_raw"));
+        //1. Get point cloud
+        sensor_msgs::PointCloud2ConstPtr pc2;
+        receive_pc_organized(pc2);
+        captured_cloud_pub.publish(pc2);
+        pc2_PCL_Cloud(pc2,cloud_local);
+        pcl::StatisticalOutlierRemoval<pcl::PointXYZRGB> sor_stat;
+        sor_stat.setInputCloud (cloud_local);
+        sor_stat.setMeanK(30);
+        sor_stat.setStddevMulThresh (1.0);
+        sor_stat.filter (*cloud_local);
 
-            //1. Get point cloud
-            sensor_msgs::PointCloud2ConstPtr pc2;
-            receive_pc(pc2);
-            captured_cloud_pub.publish(pc2);
-            pc2_PCL_Cloud(pc2,cloud_local);
-            pcl::StatisticalOutlierRemoval<pcl::PointXYZRGB> sor_stat;
-            sor_stat.setInputCloud (cloud_local);
-            sor_stat.setMeanK(30);
-            sor_stat.setStddevMulThresh (1.0);
-            sor_stat.filter (*cloud_local);
+        Eigen::Affine3d _T_base_camera;
 
-            //2. Transfromation
-            //2.1 point cloud from realsense_fixture to base
+        try {
+            transformStamped = tfBuffer.lookupTransform(FRAME_BASE, FRAME_CAMERA, ros::Time(0));
+            // 'transformStamped.transform.translation' contains translation [x, y, z]
+            // 'transformStamped.transform.rotation' contains rotation as a quaternion [x, y, z, w]
+            ROS_INFO("Transformation from %s to %s - Translation: [%f, %f, %f], Rotation: [%f, %f, %f, %f]",
+                    FRAME_BASE, FRAME_CAMERA,
+                    transformStamped.transform.translation.x, transformStamped.transform.translation.y, transformStamped.transform.translation.z,
+                    transformStamped.transform.rotation.x, transformStamped.transform.rotation.y,
+                    transformStamped.transform.rotation.z, transformStamped.transform.rotation.w);
+            _T_base_camera = convert_tf_transform(transformStamped);
+        } catch (tf2::TransformException& ex) {
+            ROS_ERROR("Failed to obtain the transformation between %s and %s: %s",  FRAME_BASE, FRAME_CAMERA, ex.what());
+            return 1;
+        }
+        // Eigen::Affine3d T_realsense_base_current = pose2eigen(ctmFk.response.target_pose);
+        pcl::transformPointCloud(*cloud_local,*cloud_local,_T_base_camera);
+        pcl::transformPointCloud(*cloud_local,*cloud_local,T_base_root.inverse());
+        
+        PlantFilter(cloud_local);
 
-            sensor_msgs::JointStateConstPtr js;
-            js = ros::topic::waitForMessage<sensor_msgs::JointState>("/joint_states",ros::Duration(1.0));
-            ctmFk.request.joint_state = *js;
-            ctmFk.request.fk_link_name = "realsense_fixture";
-            std::cout << *js << std::endl;
-            compute_tm_fk_service.call(ctmFk.request,ctmFk.response);
-            Eigen::Affine3d T_realsense_base_current = pose2eigen(ctmFk.response.target_pose);
-            pcl::transformPointCloud(*cloud_local,*cloud_local,T_realsense_base_current);
-            pcl::transformPointCloud(*cloud_local,*cloud_local,T_base_root.inverse());
-            
-            
-            //visulaize here
-
-
-            
-
-
-            //3. Filter point cloud, distance, color
-            PlantFilter(cloud_local);
-
-            fsm_srv.request.status = fsm_srv.request.POINTCLOUD_PREPROCESSING_DONE;
-            fsm_srv.request.header.stamp = ros::Time::now();
-            update_FSM_srv.call(fsm_srv.request,fsm_srv.response);
-            ros::Duration(0.5).sleep();
-            if(cloud_local->points.size() <= 100){
-                pcl::getMinMax3D(*cloud_global,rough_search_min,rough_search_max);
-                plant_height_msg.height.data = rough_search_max(2) - rough_search_min(2);
-                plant_height_msg.header.stamp = ros::Time::now();
-                //publish
-                plant_height_pub.publish(plant_height_msg);
-                ROS_INFO_STREAM("Current Max Height = " + std::to_string(rough_search_max(2)));
-                icped_cloud = toROS_msg(cloud_global);
-                icped_cloud.header.stamp = ros::Time::now();
-                icped_cloud_pub.publish(icped_cloud);
-                fsm_srv.request.status = fsm_srv.request.POINTCLOUD_PAIR_CASE2;
-                fsm_srv.request.header.stamp = ros::Time::now();
-                update_FSM_srv.call(fsm_srv.request,fsm_srv.response);
-                ros::Duration(0.5).sleep();
-                break;
-            }
-            
-
-
-            //4. construct ros execute_ICP message 
-            robot_control_pkg::execute_ICP icp_msg;
-            icp_msg.request.iterations = 50;
-            icp_msg.request.pc_orig = toROS_msg(cloud_global);
-            icp_msg.request.pc_new_vp = toROS_msg(cloud_local); 
-            icp_msg.request.dist_R2 = 0.01;
-            if(cloud_global->points.size() == 0){
-                fsm_srv.request.status = fsm_srv.request.POINTCLOUD_PAIR_CASE1;
-                fsm_srv.request.header.stamp = ros::Time::now();
-                update_FSM_srv.call(fsm_srv.request,fsm_srv.response);
-                ros::Duration(0.5).sleep();
-            }
-
-
-            //5. call function 
-            if(cloud_global->points.size() > 0 && cloud_local->points.size() >0){
-                fsm_srv.request.status = fsm_srv.request.POINTCLOUD_PAIR_CASE3;
-                fsm_srv.request.header.stamp = ros::Time::now();
-                update_FSM_srv.call(fsm_srv.request,fsm_srv.response);
-                ros::Duration(0.5).sleep();
-            }
-
-            ros::Time start_time = ros::Time::now(); 
-            execute_ICP_srv.call(icp_msg.request,icp_msg.response); //Register pointcloud
-            ros::Time end_time = ros::Time::now(); 
-            ros::Duration diff = end_time - start_time;
-            ROS_INFO_STREAM("ICP executing time:" + std::to_string(diff.toSec())
-                + "GLOBAL:" + std::to_string(cloud_global->points.size()) 
-                + " LOCAL:" + std::to_string(cloud_local->points.size()));
-            if(cloud_global->points.size() > 0 && cloud_local->points.size() >0){
-                fsm_srv.request.status = fsm_srv.request.EXECUTE_ICP_DONE;
-                fsm_srv.request.header.stamp = ros::Time::now();
-                update_FSM_srv.call(fsm_srv.request,fsm_srv.response);
-                ros::Duration(0.5).sleep();
-            }
-            pcl::PointCloud<pcl::PointXYZRGB>::Ptr pc_merged (new pcl::PointCloud<pcl::PointXYZRGB>);
-            pcl::PCLPointCloud2 pc2_merged;
-            pcl_conversions::toPCL(icp_msg.response.pc_merged, pc2_merged);
-            pcl::fromPCLPointCloud2(pc2_merged,*pc_merged);
-            sensor_msgs::PointCloud2 response_cloud =  icp_msg.response.pc_merged;
-            response_cloud.header.stamp = ros::Time::now();
-            plant_cloud_pub.publish(response_cloud);
-
-            icped_cloud = icp_msg.response.pc_merged;
-
-            //6. update cloud global and move into next iteration
-            if(fsm_srv.request.status == fsm_srv.request.POINTCLOUD_PAIR_CASE1){
-                fsm_srv.request.status = fsm_srv.request.CASE1_START_COPY_CLOUD_DONE;
-                fsm_srv.request.header.stamp = ros::Time::now();
-                update_FSM_srv.call(fsm_srv.request,fsm_srv.response);
-                ros::Duration(0.5).sleep();
-            }
-            
-            pcl::copyPointCloud(*pc_merged,*cloud_global);
-            pcl::io::savePCDFileASCII(request.folder_path.data +"/plant_cloud_BF_" + std::to_string(first_stage_cloud_ctr) + ".pcd", *cloud_global);
-            //Also save the pointcloud under robot base frame
-            pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_glob_base (new pcl::PointCloud<pcl::PointXYZRGB>);
-            pcl::transformPointCloud(*cloud_global,*cloud_glob_base,T_base_root);
-            pcl::io::savePCDFileASCII(request.folder_path.data +"/plant_cloud_BF_Base_" + std::to_string(first_stage_cloud_ctr) + ".pcd", *cloud_glob_base);
-
+        fsm_srv.request.status = fsm_srv.request.POINTCLOUD_PREPROCESSING_DONE;
+        fsm_srv.request.header.stamp = ros::Time::now();
+        update_FSM_srv.call(fsm_srv.request,fsm_srv.response);
+        ros::Duration(0.5).sleep();
+        if(cloud_local->points.size() <= 100){
             pcl::getMinMax3D(*cloud_global,rough_search_min,rough_search_max);
-            float current_height = rough_search_max(2) - rough_search_min(2);
-            float height_change_rate = (current_height / last_height) - 1.0; //bug here
-
-            viewer->removeAllPointClouds();
-            viewer->removeCoordinateSystem();
-            viewer->addPointCloud(cloud_global,"cloud_global",v1);
-            viewer->removeShape("txt_1");
-            viewer->removeShape("txt_2");
-            viewer->removeShape("txt_3");
-            viewer->addText("Iteration: " + std::to_string(height_search_iteration), 
-                80,140,30,1.0,1.0,1.0,"txt_1");
-            viewer->addText("Plant Height: " + std::to_string(rough_search_max(2) - rough_search_min(2)), 
-                80,100,30,1.0,1.0,1.0,"txt_2");
-            viewer->addText("Eta_sp: " + std::to_string(height_change_rate*100) + "%",  
-                80,60,30,1.0,1.0,1.0,"txt_3");
-            
-            viewer->addCoordinateSystem(0.1);
-            viewer->spinOnce(2000);
-
-            // viewer->spin();
-            // ROS_INFO_STREAM("cloud_global size = " + std::to_string(cloud_global->points.size()));
-            // ROS_INFO_STREAM("Current Max Height = " + std::to_string(rough_search_max(2)));
-            
-
-            fsm_srv.request.status = fsm_srv.request.CAL_HEIGHT_DONE;
-            fsm_srv.request.header.stamp = ros::Time::now();
-            update_FSM_srv.call(fsm_srv.request,fsm_srv.response);
-            ros::Duration(0.5).sleep();
-
             plant_height_msg.height.data = rough_search_max(2) - rough_search_min(2);
             plant_height_msg.header.stamp = ros::Time::now();
-            //publish
             plant_height_pub.publish(plant_height_msg);
+            ROS_INFO_STREAM("Current Max Height = " + std::to_string(rough_search_max(2)));
+            icped_cloud = toROS_msg(cloud_global);
             icped_cloud.header.stamp = ros::Time::now();
             icped_cloud_pub.publish(icped_cloud);
-            
-            first_stage_cloud_ctr ++;
-            if(h + 0.15 <= 1.56){
-                //exceed
-                fsm_srv.request.status = fsm_srv.request.OB_HEIGHT_NOT_EXCEED;
-                fsm_srv.request.header.stamp = ros::Time::now();
-                update_FSM_srv.call(fsm_srv.request,fsm_srv.response);
-                ros::Duration(0.5).sleep();
-            }else{
-                fsm_srv.request.status = fsm_srv.request.OB_HEIGHT_EXCEED;
-                fsm_srv.request.header.stamp = ros::Time::now();
-                update_FSM_srv.call(fsm_srv.request,fsm_srv.response);
-                ros::Duration(0.5).sleep();
-            }
-            // if(h == float(0.2)){
-            //     last_height = rough_search_max(2) - rough_search_min(2);
-            //     // std::cout << "2 rough_search_max = " << rough_search_max(2) << "\tlast_height = " << last_height << std::endl;
-            // }else{
-                // std::cout << "3 rough_search_max = " << rough_search_max(2) << "\tPlant Height = " << last_height << std::endl;
-                ROS_INFO_STREAM("Height Change Rate = " + std::to_string(height_change_rate) +
-                 "\t Height = " + std::to_string(current_height)); //Bug fixed here
-                // if(height_change_rate <= 0.02){
-                //     fsm_srv.request.status = fsm_srv.request.POINTCLOUD_PAIR_CASE2;
-                //     fsm_srv.request.header.stamp = ros::Time::now();
-                //     update_FSM_srv.call(fsm_srv.request,fsm_srv.response);
-                //     ros::Duration(0.5).sleep();
-                //     break;
-                // }
-            // }
-            last_height = rough_search_max(2) - rough_search_min(2);
-            // std::cout << "4 rough_search_max = " << rough_search_max(2) << "\tPlant Height = " << last_height << std::endl;
-            height_search_iteration ++;
+            fsm_srv.request.status = fsm_srv.request.POINTCLOUD_PAIR_CASE2;
+            fsm_srv.request.header.stamp = ros::Time::now();
+            update_FSM_srv.call(fsm_srv.request,fsm_srv.response);
+            ros::Duration(0.5).sleep();
+            break;
         }
+
+        //4. construct ros execute_ICP message 
+        robot_control_pkg::execute_ICP icp_msg;
+        icp_msg.request.iterations = 50;
+        icp_msg.request.pc_orig = toROS_msg(cloud_global);
+        icp_msg.request.pc_new_vp = toROS_msg(cloud_local); 
+        icp_msg.request.dist_R2 = 0.01;
+        if(cloud_global->points.size() == 0){
+            fsm_srv.request.status = fsm_srv.request.POINTCLOUD_PAIR_CASE1;
+            fsm_srv.request.header.stamp = ros::Time::now();
+            update_FSM_srv.call(fsm_srv.request,fsm_srv.response);
+            ros::Duration(0.5).sleep();
+        }
+
+
+        //5. call function 
+        if(cloud_global->points.size() > 0 && cloud_local->points.size() >0){
+            fsm_srv.request.status = fsm_srv.request.POINTCLOUD_PAIR_CASE3;
+            fsm_srv.request.header.stamp = ros::Time::now();
+            update_FSM_srv.call(fsm_srv.request,fsm_srv.response);
+            ros::Duration(0.5).sleep();
+        }
+
+        ros::Time start_time = ros::Time::now(); 
+        execute_ICP_srv.call(icp_msg.request,icp_msg.response); //Register pointcloud
+        ros::Time end_time = ros::Time::now(); 
+        ros::Duration diff = end_time - start_time;
+        ROS_INFO_STREAM("ICP executing time:" + std::to_string(diff.toSec())
+            + "GLOBAL:" + std::to_string(cloud_global->points.size()) 
+            + " LOCAL:" + std::to_string(cloud_local->points.size()));
+        if(cloud_global->points.size() > 0 && cloud_local->points.size() >0){
+            fsm_srv.request.status = fsm_srv.request.EXECUTE_ICP_DONE;
+            fsm_srv.request.header.stamp = ros::Time::now();
+            update_FSM_srv.call(fsm_srv.request,fsm_srv.response);
+            ros::Duration(0.5).sleep();
+        }
+        pcl::PointCloud<pcl::PointXYZRGB>::Ptr pc_merged (new pcl::PointCloud<pcl::PointXYZRGB>);
+        pcl::PCLPointCloud2 pc2_merged;
+        pcl_conversions::toPCL(icp_msg.response.pc_merged, pc2_merged);
+        pcl::fromPCLPointCloud2(pc2_merged,*pc_merged);
+        sensor_msgs::PointCloud2 response_cloud =  icp_msg.response.pc_merged;
+        response_cloud.header.stamp = ros::Time::now();
+        plant_cloud_pub.publish(response_cloud);
+
+        icped_cloud = icp_msg.response.pc_merged;
+
+        //6. update cloud global and move into next iteration
+        if(fsm_srv.request.status == fsm_srv.request.POINTCLOUD_PAIR_CASE1){
+            fsm_srv.request.status = fsm_srv.request.CASE1_START_COPY_CLOUD_DONE;
+            fsm_srv.request.header.stamp = ros::Time::now();
+            update_FSM_srv.call(fsm_srv.request,fsm_srv.response);
+            ros::Duration(0.5).sleep();
+        }
+        
+        pcl::copyPointCloud(*pc_merged,*cloud_global);
+        pcl::io::savePCDFileASCII(request.folder_path.data +"/plant_cloud_BF_" + std::to_string(first_stage_cloud_ctr) + ".pcd", *cloud_global);
+        //Also save the pointcloud under robot base frame
+        pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_glob_base (new pcl::PointCloud<pcl::PointXYZRGB>);
+        pcl::transformPointCloud(*cloud_global,*cloud_glob_base,T_base_root);
+        pcl::io::savePCDFileASCII(request.folder_path.data +"/plant_cloud_BF_Base_" + std::to_string(first_stage_cloud_ctr) + ".pcd", *cloud_glob_base);
+
+        pcl::getMinMax3D(*cloud_global,rough_search_min,rough_search_max);
+        float current_height = rough_search_max(2) - rough_search_min(2);
+        float height_change_rate = (current_height / last_height) - 1.0; //bug here
+
+        viewer->removeAllPointClouds();
+        viewer->removeCoordinateSystem();
+        viewer->addPointCloud(cloud_global,"cloud_global",v1);
+        viewer->removeShape("txt_1");
+        viewer->removeShape("txt_2");
+        viewer->removeShape("txt_3");
+        viewer->addText("Iteration: " + std::to_string(height_search_iteration), 
+            80,140,30,1.0,1.0,1.0,"txt_1");
+        viewer->addText("Plant Height: " + std::to_string(rough_search_max(2) - rough_search_min(2)), 
+            80,100,30,1.0,1.0,1.0,"txt_2");
+        viewer->addText("Eta_sp: " + std::to_string(height_change_rate*100) + "%",  
+            80,60,30,1.0,1.0,1.0,"txt_3");
+        
+        viewer->addCoordinateSystem(0.1);
+        viewer->spinOnce(2000);
+
+        fsm_srv.request.status = fsm_srv.request.CAL_HEIGHT_DONE;
+        fsm_srv.request.header.stamp = ros::Time::now();
+        update_FSM_srv.call(fsm_srv.request,fsm_srv.response);
+        ros::Duration(0.5).sleep();
+
+        plant_height_msg.height.data = rough_search_max(2) - rough_search_min(2);
+        plant_height_msg.header.stamp = ros::Time::now();
+        //publish
+        plant_height_pub.publish(plant_height_msg);
+        icped_cloud.header.stamp = ros::Time::now();
+        icped_cloud_pub.publish(icped_cloud);
+        
+        first_stage_cloud_ctr ++;
+        if(h + 0.15 <= 1.56){
+            //exceed
+            fsm_srv.request.status = fsm_srv.request.OB_HEIGHT_NOT_EXCEED;
+            fsm_srv.request.header.stamp = ros::Time::now();
+            update_FSM_srv.call(fsm_srv.request,fsm_srv.response);
+            ros::Duration(0.5).sleep();
+        }else{
+            fsm_srv.request.status = fsm_srv.request.OB_HEIGHT_EXCEED;
+            fsm_srv.request.header.stamp = ros::Time::now();
+            update_FSM_srv.call(fsm_srv.request,fsm_srv.response);
+            ros::Duration(0.5).sleep();
+        }
+
+        ROS_INFO_STREAM("Height Change Rate = " + std::to_string(height_change_rate) +
+            "\t Height = " + std::to_string(current_height)); //Bug fixed here
+        last_height = rough_search_max(2) - rough_search_min(2);
+        height_search_iteration ++;
+
+        continue;
     }
     #pragma endregion
     

@@ -11,7 +11,7 @@
 import rospy, rosnode, rospkg
 import tkinter as tk
 from tkinter import ttk
-import sys, os
+import sys, os, subprocess
 from time import strftime
 
 rospy.init_node("node_checker",log_level=rospy.DEBUG)
@@ -48,9 +48,10 @@ hyp = {
     'credential_key': conf.get('forge.datahub', 'credential')
 }
 class App:
-    def __init__(self, root):
+    def __init__(self, root:tk.Tk):
 
         self.root = root
+        # self.root.geometry("2000x1500")
         self.root.title("ROS Node Status")
         # self.datahub = utils.datahub_send_data(hyp)
         self.datahub_get_ugv_power = utils.datahub_api_send_get(usr_name=hyp['usr_name'],password=hyp['password'],node_id=hyp['node_id'],
@@ -70,7 +71,7 @@ class App:
         self.tree_node.heading("Node", text="Node")
         self.tree_node.heading("Status", text="Status")
         self.tree_node.heading("Latency", text="Latency(ms)")
-        
+
         # Add some sample data
         self.nodes = [  "/rosout",
                         "/OLDC_Service_node",
@@ -78,15 +79,39 @@ class App:
                         "/execute_ICP_cuda",
                         "/fsm_node",
                         "/srv_ICP_node",
-                        "/tm_aruco",
+                        "/aruco_detector",
                         "/tm_controller", 
                         "/tm_driver",
                         "/yolo_predictor"]
+        self.nodes_handlers = [
+                        "roscore",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                        "tm_controller.py",
+                        "",
+                        "",
+        ]
         # self.node_status = self.nodes.copy()
         for node in self.nodes:
             self.tree_node.insert("", "end", values=(node, "", ""))
-        
+        self.context_menu = tk.Menu(root, tearoff=0)
+        self.context_menu.add_command(label="Start Node", command=self.start_node)
+        self.context_menu.add_command(label="Stop Node", command=self.stop_node)
+        # self.context_menu.add_command(label="test", command=lambda: self.show_context_menu(self.tree_node.winfo_pointerxy()))
+        # Bind the right-click event to the show_context_menu function
+        self.tree_node.bind("<Button-3>", self.show_context_menu)
+        # self.tree_buttons = ttk.Treeview(root, columns=("Button"), show="headings")
+        # self.tree_buttons.heading("Button", text="Button")
+        # for i, item in enumerate(self.nodes):
+        #     button = ttk.Button(root, text=f"Button {i}", command=lambda i=i: self.on_right_click(i))
+        #     button.pack()
+            # self.tree_node.window_create(self.tree_node.identify_region(i, 3), window=button)
         self.tree_node.pack(expand=True, fill=tk.BOTH)
+        # self.tree_buttons.pack(expand=True, fill=tk.BOTH)
 
         # Create a table for Datahub Access
         self.tree_datahub = ttk.Treeview(root, columns=("Flag", "Value", "Last Change"), show="headings")
@@ -108,13 +133,43 @@ class App:
         self.tree_datahub.pack(expand=True, fill=tk.BOTH)
         
         self.time_label = tk.Label(root, text="", font=("Helvetica", 12))
+        # style = ttk.Style()
+        # style.configure("Treeview", font=(None, 12))
+        # style.configure("Treeview.Heading", font=(None, 12, 'bold'))
+
+        # # Set the row height
+        # style.layout("Treeview", [('Treeview.treearea', {'sticky': 'nswe'})])  # Reset the layout
+        # style.configure("Treeview", rowheight=40)
+
         self.time_label.pack(side=tk.BOTTOM)
 
         # Set up the update loop
         self.update_status()
 
+    def show_context_menu(self,event):
+        item = self.tree_node.identify_row(event.y)
+        if item:
+            # Display your context menu here
+            self.context_menu.post(event.x_root, event.y_root)
+
+    def start_node(self):
+        item = self.tree_node.selection()
+        index = int(item[0].replace('I','')) -1
+        if item:
+            cmd = ["rosrun", "robot_control_pkg", f"{self.nodes_handlers[index]}"]
+            self.process = subprocess.Popen(cmd)
+            print(cmd)
+            print(f"Inspecting item: {item}")
+
+    def stop_node(self):
+        self.process.terminate()
+        item = self.tree_node.selection()
+        if item:
+            print(f"Inspecting item: {item}")
+
     def update_status(self):
         # Update the status every 1000 milliseconds (1 second)
+        # print(self.root.geometry())
         curr_nodes = rosnode.get_node_names()
         rosnode.rosnode_ping
         for i in range(len(self.nodes)):

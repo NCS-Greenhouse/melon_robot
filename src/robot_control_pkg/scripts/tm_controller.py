@@ -46,7 +46,7 @@ class TM_Controller(object):
     def __init__(self):
         super(TM_Controller, self).__init__()
         moveit_commander.roscpp_initialize(sys.argv)
-        rospy.init_node("tm_controller_node", anonymous=True, log_level=rospy.INFO)
+        rospy.init_node("tm_controller", anonymous=False, log_level=rospy.INFO)
         self.TM_DESCRIPTION_PKG_PATH = rospkg.RosPack().get_path('tm_description')
 
         display_trajectory_publisher = rospy.Publisher(
