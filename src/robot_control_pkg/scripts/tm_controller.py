@@ -153,11 +153,11 @@ class TM_Controller(object):
         while(not finished):
             finished = True
             curr_js = self.move_group.get_current_joint_values()
-            for i in range(6):
-                if(abs(curr_js[i] - position[i])>angle_tolorance):
-                    finished = False
-                    break
-            rospy.loginfo("here")
+            # for i in range(6):
+            #     if(abs(curr_js[i] - position[i])>angle_tolorance):
+            #         finished = False
+            #         break
+            # rospy.loginfo("here")
             js_pos_list.append(curr_js)
             ros_time_list.append(rospy.Time.now())
 
@@ -171,8 +171,9 @@ class TM_Controller(object):
                 finished = True
                 self.move_group.stop()
                 rospy.loginfo("STOP CMD.")
-                #Call Service here
-        
+                
+            else:
+                rospy.logwarn("Marker is not found.")
         t_end = time.time()
         for i in range(len(js_pos_list)):
             js = JointState()
