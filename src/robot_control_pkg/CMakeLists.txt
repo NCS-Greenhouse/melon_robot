@@ -88,6 +88,7 @@ add_service_files(
   stem_analysis.srv
   check_OLD.srv
   melon_det.srv
+  save_pcd.srv
 )
 
 ## Generate actions in the 'action' folder
@@ -169,6 +170,8 @@ add_executable(OLDC_Service src/OLDC_Service.cpp)
 add_executable(SEA_service src/SEA_service.cpp)
 add_executable(plant_reconstruct_srv src/plant_reconstruct_srv.cpp)
 add_executable(cloud2image_node src/cloud2image_node.cpp)
+add_executable(save_pointcloud_srv src/save_pointcloud_srv.cpp)
+add_executable(plant_post_filter src/plant_post_filter.cpp)
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
 ## target back to the shorter version for ease of user use
@@ -188,6 +191,8 @@ target_link_libraries(OLDC_Service ${catkin_LIBRARIES} pcl_visualization)
 target_link_libraries(SEA_service ${catkin_LIBRARIES} pcl_visualization)
 target_link_libraries(plant_reconstruct_srv ${catkin_LIBRARIES} pcl_visualization)
 target_link_libraries(cloud2image_node ${catkin_LIBRARIES})
+target_link_libraries(save_pointcloud_srv ${catkin_LIBRARIES})
+target_link_libraries(plant_post_filter ${catkin_LIBRARIES})
 
 
 #############

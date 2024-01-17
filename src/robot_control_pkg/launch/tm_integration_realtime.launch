@@ -4,13 +4,13 @@
     <!-- <arg name="robot_ip" default="192.168.50.98"/> -->
 
     <!-- <include file="$(find realsense2_camera)/launch/rs_aligned_depth.launch"/> -->
-    <include file="$(find realsense2_camera)/launch/rs_rgbd.launch"/>
+    <!-- <include file="$(find realsense2_camera)/launch/rs_rgbd.launch"/> -->
     <include file="$(find tm5-900-moveit_config)/launch/tm5-900_moveit_planning_execution.launch"/>
     <node pkg = "robot_control_pkg" type="utils.py" name = "util"/>
     <!-- <node pkg = "robot_control_pkg" type="tm_aruco.py" name = "tm_aruco"/> -->
     <!-- <node pkg = "robot_control_pkg" type="tm_controller.py" name = "tm_controller"/> -->
     <node pkg = "robot_control_pkg" type="FSM.py" name = "fsm_node"/>
-    <!-- <node pkg = "robot_control_pkg" type="execute_ICP_cuda.py" name = "execute_ICP_cuda"/> -->
+    <node pkg = "robot_control_pkg" type="execute_ICP_cuda.py" name = "execute_ICP_cuda"/>
     <node pkg = "robot_control_pkg" type="srv_ICP" name = "srv_ICP_node"/>
     <node pkg = "robot_control_pkg" type="SEA_service" name = "SEA_service_node"/>
     <node pkg = "robot_control_pkg" type="srv_image_uploadar.py" name = "srv_image_uploadar"/>

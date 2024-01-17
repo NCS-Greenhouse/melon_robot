@@ -181,6 +181,7 @@ class TM_Controller(object):
             js.position = js_pos_list[i]
             js_list.append(js)
         #consider move js appedn outside, only save data in loop
+        self.move_group.stop()
         eTMJS_Res.executed_trajectory_js = js_list
         eTMJS_Res.executing_time = t_end - t_start
         eTMJS_Res.error_code = 1
@@ -334,35 +335,46 @@ class TM_Controller(object):
         * geometry_msgs/PoseStamped[] executed_tarjectory_pose
         '''
         
-        delta = 1e-3
+        delta = 0.03
         print("Current Frame id  = ", self.move_group.get_planning_frame())
+        self.move_group.set_planning_time(1.0)
+        self.move_group.set_num_planning_attempts(5)
         # self.move_group.set_frame
         self.move_group.set_pose_target(request.pose.pose)
+        self.move_group.set_goal_position_tolerance(0.03)
+        self.move_group.set_goal_orientation_tolerance(0.03)
         t_start = time.time()
-        success = self.move_group.go(wait = False)
+        # (status, plan) = self.move_group.plan(request.pose.pose)
+        # print(plan)
+        success = self.move_group.go(wait = True)
+        # success = self.move_group.execute(plan,wait=True)
+        
         fihished = False
         pose_list = []
         joint_state_list = []
-        while(not fihished):
-            current_pose:PoseStamped = self.move_group.get_current_pose()
-            current_joint_state:JointState = rospy.wait_for_message('/joint_states',JointState)
-            pose_list.append(current_pose)
-            joint_state_list.append(current_joint_state)
-            _delta =[
-                abs(request.pose.pose.position.x - current_pose.pose.position.x),
-                abs(request.pose.pose.position.y - current_pose.pose.position.y),
-                abs(request.pose.pose.position.z - current_pose.pose.position.z),
-                abs(request.pose.pose.orientation.w - current_pose.pose.orientation.w),
-                abs(request.pose.pose.orientation.x - current_pose.pose.orientation.x),
-                abs(request.pose.pose.orientation.y - current_pose.pose.orientation.y),
-                abs(request.pose.pose.orientation.z - current_pose.pose.orientation.z)
-            ]
-            if(any(d > delta for d in _delta)):
-                fihished = False
-                continue
-            else:
-                fihished = True
-                # success = True
+        if(success == False):
+            fihished = True 
+        # while(not fihished):
+        #     current_pose:PoseStamped = self.move_group.get_current_pose()
+        #     current_joint_state:JointState = rospy.wait_for_message('/joint_states',JointState)
+        #     pose_list.append(current_pose)
+        #     joint_state_list.append(current_joint_state)
+        #     _delta =[
+        #         abs(request.pose.pose.position.x - current_pose.pose.position.x),
+        #         abs(request.pose.pose.position.y - current_pose.pose.position.y),
+        #         abs(request.pose.pose.position.z - current_pose.pose.position.z),
+        #         abs(request.pose.pose.orientation.w - current_pose.pose.orientation.w),
+        #         abs(request.pose.pose.orientation.x - current_pose.pose.orientation.x),
+        #         abs(request.pose.pose.orientation.y - current_pose.pose.orientation.y),
+        #         abs(request.pose.pose.orientation.z - current_pose.pose.orientation.z)
+        #     ]
+        #     rospy.loginfo_throttle(1,"In Pose Moving Loop")
+        #     if(any(d > delta for d in _delta)):
+        #         fihished = False
+        #         continue
+        #     else:
+        #         fihished = True
+        #         success = True
         self.move_group.stop()
         self.move_group.clear_pose_targets()
         t_end = time.time()

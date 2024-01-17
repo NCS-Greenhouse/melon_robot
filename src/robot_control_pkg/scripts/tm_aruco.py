@@ -169,7 +169,8 @@ class ArUcoMarker_Handler:
             #Transfrom Flange to Realsense Frame
             is_detected.data = True
             board_list_indecies = self.get_detected_boards(ids)
-            rospy.loginfo(f"Index = {board_list_indecies[0]}")
+            if(len(board_list_indecies) > 0):
+                rospy.loginfo(f"Index = {board_list_indecies[0]}")
 
             # print(board_list_indecies)
             for index in board_list_indecies:

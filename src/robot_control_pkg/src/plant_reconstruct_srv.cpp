@@ -8,6 +8,16 @@
  * @copyright Copyright (c) 2023
  * 
  */
+/*
+ * Created on Thu Jan 04 2024
+ *
+ * Copyright (c) 2024 NCS-Greenhouse-Group
+ *
+ * Author:ShengDao Du, Email: duchengdao@gmail.com
+ * Github Page: https://github.com/Runnlion
+ * Personal Page: https://shengdao.me
+ */
+
 #include <pcl/io/pcd_io.h>
 #include <pcl/point_types.h>
 #include <pcl/visualization/pcl_visualizer.h>
@@ -1093,7 +1103,7 @@ bool plant_scanning_service(robot_control_pkg::plant_reconstruct::Request &reque
     std::vector<double> init_js_greenhouse{-0.35,
         0.8069331497621015,
         -0.9356490515678113,
-        0.8786732500486015,
+        1.2,
         1.7707593777693327,
         -0.18170818025589258};
     geometry_msgs::TransformStamped transformStamped;
@@ -1269,8 +1279,8 @@ bool plant_scanning_service(robot_control_pkg::plant_reconstruct::Request &reque
             rot_angle(-90,'x',false)*
             rot_angle(-M_PI,'z',true)*
             rot_angle(60,'x',false); //This guy is based on realsense camera
-        T_vp_aruco_base.matrix().block<3,1>(0,3) = Eigen::Vector3d(   cosf(270/RAD)*0.5,
-                                                                sinf(270/RAD)*0.5,0.5);
+        T_vp_aruco_base.matrix().block<3,1>(0,3) = Eigen::Vector3d(   cosf(270/RAD)*0.65,
+                                                                sinf(270/RAD)*0.65,0.6);
         T_vp_aruco_base = T_base_aruco_init * T_vp_aruco_base;
         eigen2pose(T_vp_aruco_base,ps);
         ps_stamped.header.frame_id = FRAME_CAMERA;
@@ -1278,7 +1288,7 @@ bool plant_scanning_service(robot_control_pkg::plant_reconstruct::Request &reque
         etmPose.request.pose = ps_stamped;
         std::cout << etmPose.request.pose << std::endl;
         execute_tm_pose_service.call(etmPose.request,etmPose.response);
-        
+        sleep(2);
         /**
          * @brief Consider changing this block, from compute-tm-ik to [directly change the pose]
          * 
@@ -1425,7 +1435,11 @@ bool plant_scanning_service(robot_control_pkg::plant_reconstruct::Request &reque
     int first_stage_cloud_ctr = 0;
     float last_height = 0.0;
     int height_search_iteration = 0;
-    for (float h = 0.7; h < 1.8; h += search_interval)
+    std::vector<float> sample_angle;
+    sample_angle.push_back(30.0);
+    sample_angle.push_back(0.0);
+    sample_angle.push_back(-30.0);
+    for (float h = 0.2; h < 1.8; h += search_interval)
     {
         Eigen::Affine3d T_vp_root, T_vp_base;
         float x_rot_ang = (h<=0.4?(-37*h + 22):(h>0.81?-(45*(h-0.3) - 24):0.0));
@@ -1440,31 +1454,36 @@ bool plant_scanning_service(robot_control_pkg::plant_reconstruct::Request &reque
         //     rot_angle(-90,'x',false)*
         //     rot_angle(fixed_y_angle,'y',false)*
         //     rot_angle(-x_rot_ang,'x',false);
-
-        T_vp_root.matrix().block<3,3>(0,0) = 
-            rot_angle(-90,'x',false)*
-            rot_angle(-M_PI,'z',true)*
-            rot_angle(x_rot_ang,'x',false);
-
-        float radii = (h>0.8?1.3:start_radius); //0.8 height
-        // radii = 0.8;
-        T_vp_root.matrix().block<3,1>(0,3) = Eigen::Vector3d(   cosf(270/RAD)*radii,
-                                                                sinf(270/RAD)*radii,adjusted_h);
-        T_vp_base = T_base_root * T_vp_root;
-
         pcl::PointCloud<pcl::PointXYZRGB>::Ptr cloud_local (new pcl::PointCloud<pcl::PointXYZRGB>); // container for receiving stem cloud
-        ROS_INFO_STREAM("h = "+ std::to_string(adjusted_h) + 
-            "\t x_rot_ang = "+ std::to_string(x_rot_ang) + 
-            "\t Error Code = " + std::to_string(ctmIk.response.error_code));
-        
-        T_vp_base = T_base_root * T_vp_root;
-        eigen2pose(T_vp_base,ps);
-        ps_stamped.header.frame_id = FRAME_CAMERA;
-        ps_stamped.pose = ps;
-        etmPose.request.pose = ps_stamped;
-        std::cout << etmPose.request.pose << std::endl;
-        execute_tm_pose_service.call(etmPose.request,etmPose.response); //We assume that this function works well.
 
+        for(auto const& angle:sample_angle){
+            T_vp_root.matrix().block<3,3>(0,0) = 
+                rot_angle(-90,'x',false)*
+                rot_angle(-M_PI,'z',true)*
+                rot_angle(x_rot_ang,'x',false)*
+                rot_angle(angle,'y',false);
+
+            float radii = (h>0.8?1.3:start_radius); //0.8 height
+            // radii = 0.8;
+            T_vp_root.matrix().block<3,1>(0,3) = Eigen::Vector3d(   cosf((270 + angle)/RAD)*radii,
+                                                                    sinf((270 + angle)/RAD)*radii,adjusted_h);
+            T_vp_base = T_base_root * T_vp_root;
+
+            ROS_INFO_STREAM("h = "+ std::to_string(adjusted_h) + 
+                "\t x_rot_ang = "+ std::to_string(x_rot_ang) + 
+                "\t Error Code = " + std::to_string(ctmIk.response.error_code));
+            
+            T_vp_base = T_base_root * T_vp_root;
+            eigen2pose(T_vp_base,ps);
+            ps_stamped.header.frame_id = FRAME_CAMERA;
+            ps_stamped.pose = ps;
+            etmPose.request.pose = ps_stamped;
+            std::cout << etmPose.request.pose << std::endl;
+            // execute_tm_pose_service.call(etmPose.request,etmPose.response); //We assume that this function works well.
+        }
+
+        //Get pointcloud and save to somewhere for further 
+        continue;
         // fsm_srv.request.status = fsm_srv.request.HEADON_VIEWPOINTS_PLANNING_SUCCESS;
         // fsm_srv.request.header.stamp = ros::Time::now();
         // update_FSM_srv.call(fsm_srv.request,fsm_srv.response);
